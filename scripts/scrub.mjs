@@ -31,10 +31,16 @@ const instructorMap = new Map();
 const pseudo = (name) => { if (!instructorMap.has(name)) instructorMap.set(name, `Instructor ${String.fromCharCode(65 + (instructorMap.size % 26))}${instructorMap.size >= 26 ? Math.floor(instructorMap.size / 26) : ''}`); return instructorMap.get(name); };
 /** Staff are real people: replace their display names with stable placeholders and drop their bios. */
 function pseudonymiseInstructors(t) {
-  // Instructor objects are flat ({id: res_…, name|label, imageUrl, description}) in any key order.
-  return t.replace(/\{[^{}]*"id":"res_[A-Za-z0-9]+"[^{}]*\}/g, (obj) => obj
+  const rewrite = (obj) => obj
     .replace(/"(name|label)":"((?:[^"\\]|\\.)*)"/g, (m, k, v) => `"${k}":"${pseudo(v)}"`)
-    .replace(/"description":"(?:[^"\\]|\\.)*"/g, '"description":"[redacted]"'));
+    .replace(/"description":"(?:[^"\\]|\\.)*"/g, '"description":"[redacted]"');
+  // 1. flat objects with a res_ id, any key order
+  t = t.replace(/\{[^{}]*"id":"res_[A-Za-z0-9]+"[^{}]*\}/g, rewrite);
+  // 2. flat objects that carry a staff avatar (already replaced by the placeholder URL)
+  t = t.replace(/\{[^{}]*"imageUrl":"https:\/\/example\.invalid\/avatar\.png"[^{}]*\}/g, rewrite);
+  // 3. anything keyed by a res_ id inside a resources map: {"res_…":{…}}
+  t = t.replace(/("res_[A-Za-z0-9]+":)(\{[^{}]*\})/g, (m, k, obj) => k + rewrite(obj));
+  return t;
 }
 
 /** Scrub a payload: user ids, booking/perk/payment ids, PII keys, payment methods, linked accounts, embedded images, staff names. */
