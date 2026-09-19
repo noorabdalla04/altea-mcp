@@ -31,6 +31,7 @@ bash scripts/install.sh          # npm install, `claude mcp add -s user altea â€
 node bin/altea.mjs login         # opens Chrome once; sign in; cookies persist
 node bin/altea.mjs status        # signedIn: true
 npm test                         # unit + in-process MCP protocol tests, no network
+npm run eval                     # live eval: 11 real questions through the server with assertions
 ```
 Requires macOS with Google Chrome and Node 22+. The MCP tools appear in Claude Code sessions started after registration.
 

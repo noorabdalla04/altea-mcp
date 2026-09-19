@@ -16,6 +16,7 @@
     "login": "node bin/altea.mjs login",
     "test": "node --test test/*.test.mjs",
     "smoke": "node scripts/mcp-smoke.mjs",
+    "eval": "node scripts/eval.mjs",
     "install-claude": "bash scripts/install.sh"
   },
   "dependencies": {
