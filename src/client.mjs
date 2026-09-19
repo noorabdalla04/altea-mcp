@@ -7,7 +7,7 @@
 //                             hidden window by default, visible fallback; headless is refused for bookings).
 
 import { readFile, writeFile } from 'node:fs/promises';
-import { HttpSession, ORIGIN, ACTIONS_FILE, META_FILE, TZ, openBrowser, exportCookies, inPageAction, loadCookies } from './session.mjs';
+import { HttpSession, ORIGIN, ACTIONS_FILE, META_FILE, getTZ, openBrowser, exportCookies, inPageAction, loadCookies } from './session.mjs';
 import { parseRSC, eventsFromRows, deepFindInRows, parseActionResponse } from './rsc.mjs';
 import { discoverActions } from './discover.mjs';
 import { AlteaError } from './errors.mjs';
@@ -34,18 +34,30 @@ export const GROUP_ALIASES = {
   boutique: 'Boutique Fitness', classes: 'Boutique Fitness', class: 'Boutique Fitness', studio: 'Boutique Fitness', gym: 'Boutique Fitness', fitness: 'Boutique Fitness',
 };
 
-// ---------- dates & times (all "local" = America/Toronto) ----------
+// ---------- dates & times ("local" = the club's time zone, see getTZ) ----------
 
-const fmtParts = new Intl.DateTimeFormat('en-CA', { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false, timeZoneName: 'shortOffset' });
+const fmtCache = new Map();
+function fmtFor(tz) {
+  let f = fmtCache.get(tz);
+  if (!f) { f = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false, timeZoneName: 'shortOffset' }); fmtCache.set(tz, f); }
+  return f;
+}
+const pad2 = (n) => String(n).padStart(2, '0');
+function offsetFor(d, tz) {
+  const local = new Date(d.toLocaleString('en-US', { timeZone: tz }));
+  const min = Math.round((local - d) / 60_000);
+  const sign = min < 0 ? '-' : '+'; const a = Math.abs(min);
+  return `${sign}${pad2(Math.floor(a / 60))}:${pad2(a % 60)}`;
+}
 
-export function localParts(dateLike) {
+export function localParts(dateLike, tz = getTZ()) {
   const d = dateLike instanceof Date ? dateLike : new Date(dateLike);
   if (Number.isNaN(d.getTime())) return null;
-  const p = Object.fromEntries(fmtParts.formatToParts(d).map((x) => [x.type, x.value]));
+  const p = Object.fromEntries(fmtFor(tz).formatToParts(d).map((x) => [x.type, x.value]));
   const hour = p.hour === '24' ? '00' : p.hour;
-  const off = (p.timeZoneName || 'GMT-4').replace('GMT', '');
-  const offNorm = /^[+-]\d{1,2}(:\d{2})?$/.test(off) ? (off.includes(':') ? off : off.replace(/^([+-])(\d{1,2})$/, (m, s, h) => `${s}${h.padStart(2, '0')}:00`)) : '-04:00';
-  return { date: `${p.year}-${p.month}-${p.day}`, time: `${hour}:${p.minute}`, iso: `${p.year}-${p.month}-${p.day}T${hour}:${p.minute}${offNorm}`, epoch: d.getTime() };
+  const off = (p.timeZoneName || '').replace('GMT', '');
+  const offNorm = /^[+-]\d{1,2}(:\d{2})?$/.test(off) ? (off.includes(':') ? off.replace(/^([+-])(\d):/, '$10$2:') : off.replace(/^([+-])(\d{1,2})$/, (m, s, h) => `${s}${h.padStart(2, '0')}:00`)) : offsetFor(d, tz);
+  return { date: `${p.year}-${p.month}-${p.day}`, time: `${hour}:${p.minute}`, iso: `${p.year}-${p.month}-${p.day}T${hour}:${p.minute}${offNorm}`, epoch: d.getTime(), tz };
 }
 
 export function todayLocal() { return localParts(new Date()).date; }
@@ -72,7 +84,7 @@ export function resolveDate(input, today = todayLocal()) {
   if (m) { const wd = WEEKDAYS.indexOf(m[2]); const skipToday = m[1] === 'next'; for (let i = skipToday ? 1 : 0; i < 8; i++) { const c = addDays(today, i); if (WEEKDAYS[new Date(c + 'T00:00:00Z').getUTCDay()] === WEEKDAYS[wd]) return c; } }
   if (/\b(19|20)\d{2}\b/.test(s)) {
     const t = Date.parse(input);
-    if (!Number.isNaN(t)) { const y = new Date(t).getUTCFullYear(); const ty = Number(today.slice(0, 4)); if (y >= ty - 1 && y <= ty + 2) return localParts(t).date; }
+    if (!Number.isNaN(t)) { const dt = new Date(t); const y = dt.getFullYear(); const ty = Number(today.slice(0, 4)); if (y >= ty - 1 && y <= ty + 2) return `${y}-${pad2(dt.getMonth() + 1)}-${pad2(dt.getDate())}`; } // Date.parse used the system zone; read it back the same way
   }
   throw new AlteaError('BAD_INPUT', `Unrecognised date: "${input}". Use YYYY-MM-DD, today, tomorrow, mon..sun, "next mon", +N, or "this week" / "next week" / "weekend" as a range.`);
 }
@@ -264,13 +276,19 @@ export class Altea {
   // ----- resolution helpers -----
 
   /** Default club: ALTEA_COMMUNITY (id or name) → cached detection → the club the app renders by default → first known. */
+  #adoptTZ(m, cid) {
+    if (process.env.ALTEA_TZ) return;
+    const club = (m?.communities || []).find((c) => c.id === cid);
+    if (club?.timezone) globalThis.__ALTEA_TZ = club.timezone;
+  }
+
   async defaultCommunityId() {
     const env = process.env.ALTEA_COMMUNITY;
-    if (env?.startsWith('com_')) return env;
     const m = await this.meta();
-    if (env) { const hit = m.communities.find((c) => c.name.toLowerCase().includes(env.toLowerCase())); if (hit) return hit.id; }
-    if (m.defaultCommunityId) return m.defaultCommunityId;
-    if (m.communities[0]) return m.communities[0].id;
+    if (env?.startsWith('com_')) { this.#adoptTZ(m, env); return env; }
+    if (env) { const hit = m.communities.find((c) => c.name.toLowerCase().includes(env.toLowerCase())); if (hit) { this.#adoptTZ(m, hit.id); return hit.id; } }
+    const cid = m.defaultCommunityId || m.communities[0]?.id;
+    if (cid) { this.#adoptTZ(m, cid); return cid; }
     throw new AlteaError('UPSTREAM', 'Could not determine your club; set ALTEA_COMMUNITY to its name or com_ id.');
   }
 

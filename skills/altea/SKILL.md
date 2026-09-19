@@ -9,7 +9,7 @@ description: Book, cancel, waitlist, and debrief Altea Active gym classes and co
 The user's Altea Active membership (home club auto-detected; `altea_status` shows it). Calendar groups at
 most clubs: Boutique Fitness (default for plain class questions), Pickleball (courts), Aquatics (pool),
 Recovery & Wellness, Personalized Performance (rx), Active Kids Club. Use `group: "all"` for instructor
-questions, courts, recovery, or anything not obviously a studio class. Times are America/Toronto.
+questions, courts, recovery, or anything not obviously a studio class. Times are the club's local time.
 
 ## Membership rules (state them when relevant)
 1. **Cancel before the cancellation window closes** (default 8 h), otherwise the late fee applies. `altea_cancel`

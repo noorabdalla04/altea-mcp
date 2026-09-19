@@ -6,7 +6,8 @@
 //   await A.bookings('2026-09-20')                          -> bookings on that day
 //   await A.days('2026-09-21', 7, 'Pickleball')             -> multi-day, parallel
 (() => {
-  const COMMUNITY = 'com_6ETcyzRKh3aCzpjKKhdT';
+  let COMMUNITY = null;
+  const community = async () => { if (COMMUNITY) return COMMUNITY; const r = await fetch('/booking', { headers: { RSC: '1' } }); COMMUNITY = ((await r.text()).match(/"communityId":"(com_[A-Za-z0-9]+)","eventTypesPromise"/) || [])[1] || null; return COMMUNITY; };
   function parseRSC(text) {
     const enc = new TextEncoder(), dec = new TextDecoder(); const b = enc.encode(text); const rows = {}; let i = 0; const n = b.length;
     const readUntil = (ch) => { const s = i; while (i < n && b[i] !== ch) i++; const o = dec.decode(b.subarray(s, i)); i++; return o; };
@@ -20,8 +21,8 @@
   const ddmmyyyy = (ymd) => { const [y, m, d] = ymd.split('-'); return `${d}-${m}-${y}`; };
   window.A = {
     parseRSC, rsc,
-    async schedule(ymd, group = 'Boutique Fitness', communityId = COMMUNITY) {
-      const rows = await rsc(`/booking?date=${ddmmyyyy(ymd)}&calendarGroup=${encodeURIComponent(group)}&communityId=${communityId}`);
+    async schedule(ymd, group = 'Boutique Fitness', communityId) {
+      const rows = await rsc(`/booking?date=${ddmmyyyy(ymd)}&calendarGroup=${encodeURIComponent(group)}&communityId=${communityId || await community()}`);
       const arr = find(rows, (j) => Array.isArray(j) && j[0] && String(j[0].id || '').startsWith('evt_')) || [];
       return arr.map(slim).sort((a, b) => a.time.localeCompare(b.time));
     },

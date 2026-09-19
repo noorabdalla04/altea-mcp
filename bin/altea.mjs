@@ -84,7 +84,7 @@ function printInstructor(res) {
   out(`\n${res.count} sessions ${res.from}..${res.to}`);
 }
 
-function usage() { out('altea <login|status|rules|meta|actions|schedule|find|next|who|event|bookings|book|cancel|waitlist> …  (see header of bin/altea.mjs)'); }
+async function usage() { const { readFile } = await import('node:fs/promises'); const src = await readFile(new URL(import.meta.url), 'utf8'); const header = src.split('\n').filter((l) => l.startsWith('//')).map((l) => l.replace(/^\/\/ ?/, '')).join('\n'); out(header); }
 
 const filterFlags = () => ({ instructor: flags.instructor, type: flags.type, studio: flags.studio, query: flags.query, availableOnly: !!flags.available, mine: !!flags.mine, after: flags.after, before: flags.before, at: flags.at, near: flags.near, timeOfDay: flags.tod });
 
@@ -140,7 +140,7 @@ async function main() {
         return out(await client.cancel(id.startsWith('bkg_') ? { bookingId: id, eventId: flags.event, force: !!flags.force } : { eventId: id, force: !!flags.force }));
       }
       case 'waitlist': { const [action, eventId] = rest; return out(await client.waitlist({ eventId, action })); }
-      default: return usage();
+      default: await usage(); process.exitCode = 1; return;
     }
   } finally {
     await client.close();

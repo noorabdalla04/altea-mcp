@@ -4,16 +4,17 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { HttpSession } from '../src/session.mjs';
 import { parseRSC, eventsFromRows } from '../src/rsc.mjs';
-import { resolveDate, toDDMMYYYY, DEFAULT_COMMUNITY_ID } from '../src/client.mjs';
+import { Altea, resolveDate, toDDMMYYYY } from '../src/client.mjs';
 
 const dir = join(dirname(fileURLToPath(import.meta.url)), '..', 'test', 'fixtures');
 await mkdir(dir, { recursive: true });
 const h = await HttpSession.load();
+const client = new Altea({ log: () => {} }); await client.init(); const COMMUNITY_ID = await client.defaultCommunityId(); await client.close();
 
 import { scrubRSC as scrub } from './scrub.mjs';
 
 const tomorrow = resolveDate('tomorrow');
-const sched = await h.rsc(`/booking?date=${toDDMMYYYY(tomorrow)}&calendarGroup=Boutique%20Fitness&communityId=${DEFAULT_COMMUNITY_ID}`);
+const sched = await h.rsc(`/booking?date=${toDDMMYYYY(tomorrow)}&calendarGroup=Boutique%20Fitness&communityId=${COMMUNITY_ID}`);
 await writeFile(join(dir, 'schedule.txt'), scrub(sched));
 const events = eventsFromRows(parseRSC(sched));
 const target = events.find((e) => (e.spotsLeft ?? 0) > 0) || events[0];

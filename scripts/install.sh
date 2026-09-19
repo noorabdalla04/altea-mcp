@@ -12,7 +12,7 @@ if command -v claude >/dev/null 2>&1; then
   ENVS=()
   [ -n "$MEMBER" ] && ENVS+=(-e "ALTEA_MEMBER_NAME=$MEMBER")
   [ -n "$COMMUNITY" ] && ENVS+=(-e "ALTEA_COMMUNITY=$COMMUNITY")
-  claude mcp add -s user altea "${ENVS[@]}" -- "$NODE" "$ROOT/bin/mcp-server.mjs"
+  claude mcp add -s user altea ${ENVS[@]+"${ENVS[@]}"} -- "$NODE" "$ROOT/bin/mcp-server.mjs"
   mkdir -p ~/.claude/skills/altea && cp "$ROOT/skills/altea/SKILL.md" ~/.claude/skills/altea/SKILL.md
   echo "Registered MCP server 'altea' for Claude Code and installed the skill."
 else

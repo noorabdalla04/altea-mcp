@@ -18,7 +18,9 @@ export const PROFILE_DIR = join(HOME, 'profile');
 export const COOKIES_FILE = join(HOME, 'cookies.json');
 export const ACTIONS_FILE = join(HOME, 'actions.json');
 export const META_FILE = join(HOME, 'meta.json');
-export const TZ = 'America/Toronto';
+export const TZ = 'America/Toronto'; // fallback; the club's own zone wins (see getTZ)
+/** Time zone for rendering and for the app's `tz` cookie: ALTEA_TZ → the default club's zone (set after detection) → Toronto. */
+export function getTZ() { return process.env.ALTEA_TZ || globalThis.__ALTEA_TZ || TZ; }
 
 const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36';
 
@@ -58,7 +60,7 @@ export function cookieHeader(cookies, host = 'myaltea.app') {
     seen.add(c.name);
     parts.push(`${c.name}=${c.value}`);
   }
-  if (!seen.has('tz')) parts.push(`tz=${encodeURIComponent(TZ)}`);
+  if (!seen.has('tz')) parts.push(`tz=${encodeURIComponent(getTZ())}`);
   return parts.join('; ');
 }
 
@@ -178,7 +180,7 @@ export async function openBrowser({ headless = true, mode, log = () => {} } = {}
     timeout: Number(process.env.ALTEA_LAUNCH_TIMEOUT_MS ?? 60_000),
     viewport: { width: 1100, height: 900 },
     locale: 'en-CA',
-    timezoneId: TZ,
+    timezoneId: getTZ(),
     args,
     ignoreDefaultArgs: ['--enable-automation'],
   };
@@ -191,7 +193,7 @@ export async function openBrowser({ headless = true, mode, log = () => {} } = {}
     if (!/ProcessSingleton|already running|profile.*in use|Target page, context or browser has been closed|Failed to launch/i.test(String(e))) throw e;
     log('chrome: profile locked, using cookie-seeded temporary context');
     const browser = await chromium.launch({ channel: 'chrome', headless, args: common.args, ignoreDefaultArgs: common.ignoreDefaultArgs });
-    const context = await browser.newContext({ viewport: common.viewport, locale: common.locale, timezoneId: TZ, userAgent: undefined });
+    const context = await browser.newContext({ viewport: common.viewport, locale: common.locale, timezoneId: getTZ(), userAgent: undefined });
     const cookies = await loadCookies();
     if (cookies.length) await context.addCookies(cookies.map((c) => ({ name: c.name, value: c.value, domain: c.domain, path: c.path || '/', expires: c.expires ?? -1, httpOnly: !!c.httpOnly, secure: !!c.secure, sameSite: c.sameSite || 'Lax' })));
     return { context, persistent: false, close: () => browser.close() };

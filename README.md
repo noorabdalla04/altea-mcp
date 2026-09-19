@@ -1,5 +1,7 @@
 # Altea MCP
 
+[![test](https://github.com/noorabdalla04/altea-mcp/actions/workflows/test.yml/badge.svg)](https://github.com/noorabdalla04/altea-mcp/actions/workflows/test.yml)
+
 An unofficial [Model Context Protocol](https://modelcontextprotocol.io) server and CLI for the **Altea Active**
 booking app (myaltea.app). It lets an AI assistant such as Claude answer *"which sessions does Omar run on
 Monday?"*, *"how many spots are left in the next Hot Yin?"*, *"any pickleball courts open tomorrow at 3 pm?"*,
@@ -27,7 +29,7 @@ Everything lives in `~/.altea/` (Chrome profile, cookie jar, caches). Delete tha
 ## Use it from Claude
 **Claude Code** (one command, registers the server for every project and installs the skill):
 ```bash
-bash scripts/install.sh --member "Your Name"
+bash scripts/install.sh --member "Your Name"            # add --community "Altea Toronto" to override the detected home club
 ```
 **Claude Desktop**: add to `~/Library/Application Support/Claude/claude_desktop_config.json` and restart the app:
 ```json
@@ -38,6 +40,8 @@ bash scripts/install.sh --member "Your Name"
 ```
 **Any other MCP client**: stdio transport, command `node bin/mcp-server.mjs`. Use an absolute path to `node`
 (`which node`) because GUI apps don't inherit your shell PATH.
+
+Times are shown in your club's local time zone (auto-detected from the app; `ALTEA_TZ` overrides).
 
 Then ask naturally: "what's on at Altea tomorrow evening?", "next Hot Yin?", "book me into the 9 am Main Stage
 Ride", "cancel my Sunday class". The assistant will confirm before it books or cancels.
@@ -97,7 +101,8 @@ server was validated against: `docs/mcp-design.md`; question → tool cookbook: 
 | `ALTEA_COMMUNITY` | auto-detected home club | club name or `com_…` id |
 | `ALTEA_DEFAULT_GROUP` | `Boutique Fitness` | group used for plain schedule questions |
 | `ALTEA_CANCEL_WINDOW_MIN` / `ALTEA_BOOKING_WINDOW_MIN` | 480 / 2880 | rule fallbacks in minutes |
-| `ALTEA_WINDOW` | `auto` | `auto` (hidden, then visible if refused), `hidden`, `visible`, `headless` |
+| `ALTEA_WINDOW` | `auto` | `auto` (hidden, then visible if refused), `hidden`, `visible`, `headless`; `ALTEA_QUIET_MODE` picks what `auto` tries first; `ALTEA_HEADLESS=1` is shorthand for headless |
+| `ALTEA_TZ` | the club's zone (auto-detected; Toronto fallback) | time zone for rendering and for the app's `tz` cookie |
 | `ALTEA_HOME` | `~/.altea` | where the profile, cookies and caches live |
 | `ALTEA_CACHE_TTL_MS` / `ALTEA_CONCURRENCY` | 45000 / 8 | read cache and parallel fetches |
 | `ALTEA_READ_TIMEOUT_MS` / `ALTEA_ACTION_TIMEOUT_MS` / `ALTEA_LAUNCH_TIMEOUT_MS` | 30000 / 60000 / 60000 | request and Chrome launch budgets |

@@ -13,7 +13,7 @@ import { renderSchedule, renderFind, renderInstructor, renderNext, renderEvent, 
 
 const pkg = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'package.json'), 'utf8'));
 
-export const INSTRUCTIONS = `Altea Active booking assistant for ${MEMBER} (times are America/Toronto; the default club is the member's home club).
+export const INSTRUCTIONS = `Altea Active booking assistant for ${MEMBER} (times are in the club's local time zone; the default club is the member's home club).
 Membership rules: (1) cancel at least ${RULES.cancelWindowMin / 60} hours before a session starts or a late fee applies; (2) booking opens ${RULES.bookingWindowMin / 60} hours before start.
 Defaults: the member's home club, calendar group "Boutique Fitness" for plain class questions. Use group "all" for instructor questions, courts (Pickleball), recovery, aquatics, or anything not obviously a studio class.
 Sequencing: altea_find / altea_next / altea_schedule give event ids → altea_event shows the booking window, conflicts and my booking → altea_book / altea_cancel / altea_waitlist act. altea_bookings lists what is booked with free-cancel deadlines.
@@ -24,7 +24,7 @@ const READ = { readOnlyHint: true, destructiveHint: false, idempotentHint: true,
 const ADDITIVE = { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true };
 const DESTRUCTIVE = { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: true };
 
-const dateDesc = 'YYYY-MM-DD | today | tomorrow | mon..sun (next such day, today included) | "next mon" | +N days | "this week" / "next week" / "weekend" (ranges; they set days). Toronto time.';
+const dateDesc = 'YYYY-MM-DD | today | tomorrow | mon..sun (next such day, today included) | "next mon" | +N days | "this week" / "next week" / "weekend" (ranges; they set days). Club local time.';
 const timeDesc = '24h "15:00" or "3pm" / "3:30pm".';
 const groupDesc = 'Calendar group: "Boutique Fitness" (default for plain class schedules), "Pickleball", "Aquatics", "Recovery & Wellness", "Personalized Performance", "Active Kids Club", or "all" for every group of the club. Use "all" for instructor questions, courts, recovery, or anything not obviously a studio class.';
 const formatField = z.enum(['concise', 'detailed']).optional().describe('concise (default): short text lines + minimal structured list. detailed: full event objects with ids, urls, instructor ids, descriptions — use only when a follow-up call needs them.');
@@ -100,7 +100,7 @@ export function createAlteaServer({ makeClient, log = (m) => process.stderr.writ
   server.registerTool('altea_schedule', {
     title: 'Altea schedule for a day or range',
     description: 'Lists sessions (classes, courts, recovery slots) for one day or several consecutive days with time, studio, instructor, spots left and whether the member is booked. Use it for "what\'s on tomorrow", "courts open at 3 pm", "evening classes this Saturday", or any question about a specific date. Combine filters freely: instructor, type, studio, query, availableOnly, after/before, `at` (in progress at a clock time), timeOfDay. Defaults to the Boutique Fitness group at the home club; pass group "all" for courts, recovery or instructor questions. Not for "the next occurrence of X" (use altea_next) or for searching many days by words (use altea_find). Cost ≈ 1.5 s per day per group; all groups ≈ 2 s per day.',
-    inputSchema: { date: z.string().optional().describe(dateDesc), days: z.number().int().min(1).max(45).optional().describe('Consecutive days from `date` (default 1).'), group: z.string().optional().describe(groupDesc), community: z.string().optional().describe('Club name or com_ id; default Altea Ottawa.'), ...filterShape, format: formatField, limit: limitField },
+    inputSchema: { date: z.string().optional().describe(dateDesc), days: z.number().int().min(1).max(45).optional().describe('Consecutive days from `date` (default 1).'), group: z.string().optional().describe(groupDesc), community: z.string().optional().describe('Club name or com_ id; default: the member\'s home club.'), ...filterShape, format: formatField, limit: limitField },
     outputSchema: scheduleOut, annotations: READ,
   }, run(async (c, a) => { const { format, limit, ...rest } = a; return renderSchedule(await c.schedule({ ...rest, withDescription: format === 'detailed' }), { format, limit }); }));
 

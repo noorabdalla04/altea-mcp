@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.1 — 2026-09-19
+- Second-pass review fixes: time-zone-independent date parsing (CI was red on UTC runners); the club's own
+  time zone is used for rendering and the `tz` cookie (`ALTEA_TZ` overrides); install script works on macOS
+  bash 3.2; fixture script runs again; browser helper detects the club; MCP server shuts down (and closes any
+  Chrome) when the host disconnects; real `--help`; unknown commands exit 1; eval queries configurable per club.
+- Commit authorship rewritten to the GitHub noreply address.
+
 ## 0.4.0 — 2026-09-19 (public release)
 - Open-sourced under MIT; personal references removed (member name, home club and rule windows are
   configurable; the home club is auto-detected from the signed-in session).
