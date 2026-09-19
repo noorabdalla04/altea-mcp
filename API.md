@@ -21,11 +21,11 @@ and all writes are Next.js Server Actions.** There is no REST/GraphQL surface to
 | --- | --- | --- |
 | Day schedule | `/booking?date=DD-MM-YYYY&calendarGroup=<group>&communityId=<com_…>` | 100–170 KB. Events array is the row whose JSON is `[{"id":"evt_…"…}]`. Also carries event-type tags (`evttag_…`), instructor list (`res_…`), and the communities/calendar-groups list. Visible ≥30 days ahead. |
 | Event detail + my booking context | `/booking/<evt_id>` | Row `{activeBookings, context, possibleBookings, waitlistedUsers}` (see below) plus the event object. |
-| My bookings | `/?date=YYYY-MM-DD` | Row `[["YYYY-MM-DD",{"bookings":n,"linked":n,"waitlist":n}],…]` = dates with bookings; row `[{canCancel, date, event:{…}, booking…}]` = that day's bookings. |
+| My bookings | `/?date=DD-MM-YYYY` | Row `[{canCancel, date, event:{…}, id: bkg_…, isCurrentUser, isWaitlist, perk:{cancellationWindow, cancellationPrice, …}, status, title, user}]` = ALL upcoming bookings (today → +3 months, whatever the date); row `[["YYYY-MM-DD",{"bookings":n,"linked":n,"waitlist":n}],…]` = per-day counts for the calendar month of `date`. Past details are not served. |
 | Account / access | `/account`, `/access` | not used |
 
 RSC row format: `id:<json>\n` or `id:T<hexByteLen>,<raw text>` (text rows have no newline
-terminator → parse by byte length; see `lib/rsc.mjs`). References: `"$@42"` promise → row 42.
+terminator → parse by byte length; see `src/rsc.mjs`). References: `"$@42"` promise → row 42.
 
 ### Event object (schedule + detail)
 `id` (`evt_<series>_<epochMs>`), `type` (EVENT_SERIES_INSTANCE), `status`, `recurrence` (RRULE),
@@ -55,7 +55,7 @@ Observed policy (Ottawa Gold): cancellationWindow 480 min (8 h), fee $10.00 (Bou
 `POST <page path>` with headers `Next-Action: <id>`, `Accept: text/x-component`,
 `Content-Type: text/plain;charset=UTF-8`; body = JSON array of arguments. Response row 0 is
 `{"a":"$@1",…,"b":"<buildId>"}`; row 1 is the return value; `x-action-revalidated: 1` when the
-page was re-rendered. **Ids are per-deploy content hashes** → `lib/discover.mjs` rediscovers them
+page was re-rendered. **Ids are per-deploy content hashes** → `src/discover.mjs` rediscovers them
 from the JS chunks (`createServerReference("<id>",…,"<name>")`).
 
 | Action (name in bundle) | Args | Route to post to |

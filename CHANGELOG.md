@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.4.0 — 2026-09-19 (public release)
+- Open-sourced under MIT; personal references removed (member name, home club and rule windows are
+  configurable; the home club is auto-detected from the signed-in session).
+- Audit fixes: cancel-by-bookingId now checks the 8 h policy; bookings use the app's single upcoming window and
+  count past days per month; paid membership options are never chosen implicitly (`PAID_OPTION`) and `force`
+  never bypasses waivers; linked-account bookings are no longer mistaken for yours; reference data is unioned
+  across days; cookies are written atomically and reloaded after browser use; bounded read cache; non-cancellable
+  bookings rendered as such; discovery keeps last-good action ids and warns loudly; bot-SDK readiness is awaited.
+- Token-lean results: compact events in concise mode, long slot series (recovery pods, courts) collapsed into one
+  line, permissive output schemas; group aliases (courts, recovery, kids, pool, rx); range dates ("this week",
+  "next week", "weekend"); ambiguous times and yearless dates are rejected instead of guessed.
+- Fixtures scrubbed by `scripts/scrub.mjs` (embedded images and signatures removed; history rewritten); PII test.
+- CI workflow, `.nvmrc`, install script with `--member` / `--community`.
+
 ## 0.3.1 — 2026-09-19
 - Quiet booking: window modes `auto` (hidden → visible fallback), `hidden`, `visible`, `headless`; hidden mode
   hides the Chrome process via System Events right after launch. Measured: headless is refused for bookings

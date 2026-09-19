@@ -23,7 +23,7 @@ class Stub {
   async find(a) { const s = await this.schedule({ ...a, group: a.group || 'all' }); return { ...s, events: s.days.flatMap((d) => d.events) }; }
   async instructor(a) {
     if (a.name === 'nobody') return { name: a.name, from: '2026-09-21', to: '2026-09-21', groups: ['A', 'B'], count: 0, sessions: [], instructorsSeen: 5, suggestions: ['Omar A.'] };
-    return { name: a.name, from: '2026-09-21', to: '2026-09-21', groups: ['A', 'B'], count: 1, sessions: [ev({ instructors: ['Omar A.'], group: 'Personalized Performance', date: '2026-09-21', weekday: 'Mon' })], instructorsSeen: 5, suggestions: [] };
+    return { name: a.name, matchedNames: ['Omar A.'], ambiguous: false, from: '2026-09-21', to: '2026-09-21', groups: ['A', 'B'], count: 1, sessions: [ev({ instructors: ['Omar A.'], group: 'Personalized Performance', date: '2026-09-21', weekday: 'Mon' })], instructorsSeen: 5, suggestions: [] };
   }
   async next(a) { return { query: a.query, from: '2026-09-19', searchedThrough: '2026-09-21', next: ev(), nextWithSpots: ev(), sameEvent: true, detail: { waitlistedUsers: 0, myBooking: null, bookableFrom: '2026-09-18T14:00-04:00', bookableNow: true, cancellation: policy } }; }
   async event(id) {

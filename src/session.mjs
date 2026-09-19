@@ -36,7 +36,10 @@ export async function loadCookies() {
 
 export async function saveCookies(cookies) {
   await mkdir(HOME, { recursive: true });
-  await writeFile(COOKIES_FILE, JSON.stringify(cookies, null, 2), { mode: 0o600 });
+  const tmp = `${COOKIES_FILE}.${process.pid}.tmp`;
+  await writeFile(tmp, JSON.stringify(cookies, null, 2), { mode: 0o600 });
+  const { rename } = await import('node:fs/promises');
+  await rename(tmp, COOKIES_FILE); // atomic: CLI and MCP may both write
 }
 
 function cookieMatches(c, host) {
@@ -172,6 +175,7 @@ export async function openBrowser({ headless = true, mode, log = () => {} } = {}
   const common = {
     channel: 'chrome',
     headless: mode === 'headless',
+    timeout: Number(process.env.ALTEA_LAUNCH_TIMEOUT_MS ?? 60_000),
     viewport: { width: 1100, height: 900 },
     locale: 'en-CA',
     timezoneId: TZ,
@@ -256,7 +260,8 @@ export async function login({ timeoutMs = 30 * 60_000, log = console.error } = {
 export async function inPageAction(page, pagePath, actionId, args) {
   const target = ORIGIN + pagePath;
   if (!page.url().startsWith(target)) await page.goto(target, { waitUntil: 'domcontentloaded' });
-  await page.waitForFunction(() => typeof window.KPSDK !== 'undefined' || document.readyState === 'complete', null, { timeout: 15_000 }).catch(() => {});
+  // The bot-protection SDK must be loaded so its fetch wrapper adds the proof header; wait for it (bounded).
+  await page.waitForFunction(() => typeof window.KPSDK !== 'undefined', null, { timeout: 15_000 }).catch(() => {});
   return page.evaluate(async ({ pagePath, actionId, body }) => {
     const res = await fetch(pagePath, {
       method: 'POST',

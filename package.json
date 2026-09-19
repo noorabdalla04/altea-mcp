@@ -1,6 +1,6 @@
 {
   "name": "altea-mcp",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "private": true,
   "type": "module",
   "description": "Personal MCP server + CLI for the Altea Active (myaltea.app) booking app: schedules, spots, instructors, bookings, cancellations, waitlists.",
@@ -23,5 +23,19 @@
     "@modelcontextprotocol/sdk": "^1.12.0",
     "playwright-core": "^1.59.1",
     "zod": "^3.24.0"
-  }
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/noorabdalla04/altea-mcp.git"
+  },
+  "homepage": "https://github.com/noorabdalla04/altea-mcp#readme",
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "altea",
+    "gym",
+    "booking",
+    "claude"
+  ]
 }

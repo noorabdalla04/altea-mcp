@@ -5,7 +5,7 @@
    explains what it does, when to use it, when *not* to, what each parameter means, and caveats ("explain it to a
    new hire"; Anthropic: 3–4+ sentences). Descriptions decide tool selection more than anything else.
 2. **Schemas are strict and self-describing**: every field `.describe()`d, enums for fixed sets, real min/max,
-   unknown fields rejected, few required fields, optional filters. `outputSchema` + `structuredContent` so
+   unknown fields ignored by the SDK (kept out of the docs promise), few required fields, optional filters. `outputSchema` + `structuredContent` so
    results are typed; keep a JSON text block for compatibility.
 3. **Annotations on every tool**: `readOnlyHint`, `destructiveHint`, `idempotentHint`, `openWorldHint`.
    Defaults are pessimistic (unannotated = destructive + open-world), so reads must say `readOnlyHint: true`.
@@ -29,7 +29,7 @@ Sources: MCP spec *Tools* (2025-06-18); MCP blog *Tool Annotations as Risk Vocab
 KanseiLink *MCP Tool Schema Design Guide 2026*; Salesforce hosted-MCP best practices; ECC skills
 `mcp-server-patterns` and `agent-harness-construction` (status/summary/next_actions observation contract).
 
-## Cross-validation of altea-mcp v0.2.0
+## Cross-validation of altea-mcp v0.2.0 (see CHANGELOG 0.4.0 for the audit follow-up)
 | Principle | v0.2.0 | Action (v0.3.0) |
 | --- | --- | --- |
 | Namespaced names, read/write split | ✅ `altea_*`, separate book/cancel/waitlist | keep |
@@ -52,7 +52,7 @@ KanseiLink *MCP Tool Schema Design Guide 2026*; Salesforce hosted-MCP best pract
 - Quiet mutations: `hidden` window mode by default (Chrome hidden via System Events), `visible` fallback on bot
   refusal. Evidence (2026-09-19): headless refused for confirmBooking, accepted for joinWaitlist; off-screen
   position clamped by macOS; cross-route POST tarpitted.
-- stdio only: the server runs on Noor's Mac next to the signed-in Chrome profile; no remote transport.
+- stdio only: the server runs on the member's Mac next to the signed-in Chrome profile; no remote transport.
 - `concise` is the default format because Claude Code is the client and reads text well; `detailed` returns the
   full event objects (ids, urls, instructor ids) for chained calls.
 - Error codes: `NOT_SIGNED_IN`, `BAD_INPUT`, `NOT_FOUND`, `WINDOW_NOT_OPEN`, `LATE_CANCEL`, `EVENT_FULL`,

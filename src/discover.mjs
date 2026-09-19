@@ -76,7 +76,15 @@ export async function discoverActions(fetchHtml, { pages, cacheFile, force = fal
   const cancel = defaults.find((d) => d.cancelHints);
   if (cancel) actions.cancelBookingAction = cancel.id;
 
-  const out = { key, discoveredAt: new Date().toISOString(), chunks: chunkPaths.length, actions, defaults };
+  // Keep last-good ids for anything this pass did not see (a page we could not fetch), and say so.
+  const wanted = ['confirmBookingAction', 'cancelBookingAction', 'joinWaitlistAction', 'leaveWaitlistAction'];
+  let previous = null; try { previous = JSON.parse(await readFile(cacheFile, 'utf8')); } catch { /* none */ }
+  const missing = wanted.filter((k) => !actions[k]);
+  for (const k of missing) if (previous?.actions?.[k]) { actions[k] = previous.actions[k]; log(`actions: ${k} not seen in this pass, keeping the previous id`); }
+  const stillMissing = wanted.filter((k) => !actions[k]);
+  if (stillMissing.length) log(`actions: WARNING missing ${stillMissing.join(', ')} (the app may have changed; book/cancel will fail with UNKNOWN_ACTION)`);
+
+  const out = { key, discoveredAt: new Date().toISOString(), chunks: chunkPaths.length, actions, defaults, missing: stillMissing };
   await mkdir(dirname(cacheFile), { recursive: true });
   await writeFile(cacheFile, JSON.stringify(out, null, 2));
   return out;

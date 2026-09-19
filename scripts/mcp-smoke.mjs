@@ -30,7 +30,8 @@ if (live) {
   const c2 = await call('tools/call', { name: 'altea_schedule', arguments: { date: 'tomorrow', format: 'detailed' } });
   const size = (r) => ({ text: r.result?.content?.[0]?.text?.length ?? 0, structured: JSON.stringify(r.result?.structuredContent ?? {}).length });
   console.log(`\n== size: concise ${JSON.stringify(size(c1))} vs detailed ${JSON.stringify(size(c2))} (chars)`);
-  show('window guard (3 days out)', await tool('altea_book', { eventId: 'evt_lcOJcTMxMOwCFQ2hEobo_1790071200000' }), 300);
+  const far = await tool('altea_schedule', { date: '+4', availableOnly: true, format: 'detailed', limit: 1 }); const farId = (far.text.match(/\((evt_[A-Za-z0-9_]+)\)/) || [])[1];
+  if (farId) show('window guard (4 days out)', await tool('altea_book', { eventId: farId }), 300);
   show('resource altea://rules', { ms: 0, text: (await call('resources/read', { uri: 'altea://rules' })).result?.contents?.[0]?.text || '' }, 300);
 }
 p.kill();
