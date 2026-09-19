@@ -17,5 +17,5 @@ test('renderSchedule concise is much smaller than detailed and mentions the seri
   const c = renderSchedule(res, { format: 'concise' }); const d = renderSchedule(res, { format: 'detailed' });
   assert.match(c.text, /40 slots/); assert.ok(c.text.split('\n').length < 6, 'one line per series');
   assert.ok(JSON.stringify(c.structured).length < JSON.stringify(d.structured).length / 3, 'concise structured is at least 3× smaller');
-  assert.deepEqual(Object.keys(compactEvent(slot(1))), ['id', 'time', 'title', 'studio', 'spots', 'group']);
+  assert.deepEqual(Object.keys(compactEvent(slot(1))), ['id', 'date', 'time', 'title', 'studio', 'spots', 'group']);
 });

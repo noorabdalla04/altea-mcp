@@ -213,7 +213,8 @@ export function rankNames(query, names) {
 }
 
 /** Union two reference-data sets by id (the app only sends the lists relevant to the day fetched). */
-export function mergeMeta(prev = {}, next = {}) {
+export function mergeMeta(prev, next) {
+  prev = prev || {}; next = next || {};
   const byId = (a = [], b = []) => { const m = new Map(); for (const x of [...a, ...b]) if (x && x.id) m.set(x.id, x); return [...m.values()]; };
   return {
     types: byId(prev.types, next.types).sort((a, b) => a.label.localeCompare(b.label)),

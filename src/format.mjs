@@ -12,7 +12,7 @@ export function eventLine(e, { group = false } = {}) {
 
 /** Compact event object for structured output in concise mode. */
 export function compactEvent(e) {
-  const o = { id: e.id, time: e.time, title: e.title, studio: e.studio, spots: spotsValue(e) };
+  const o = { id: e.id, date: e.date, time: e.time, title: e.title, studio: e.studio, spots: spotsValue(e) };
   if (e.instructors?.length) o.who = e.instructors.join(', ');
   if (e.group && e.group !== 'Boutique Fitness') o.group = e.group;
   return o;
