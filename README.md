@@ -15,10 +15,12 @@ reverse-engineered protocol.
 ## Layout
 ```
 bin/altea.mjs        CLI                      src/client.mjs   Altea client (schedule/find/next/who/event/bookings/book/cancel/waitlist)
-bin/mcp-server.mjs   MCP stdio server         src/session.mjs  cookie jar, fast fetch, Chrome profile (login + guarded POSTs)
+bin/mcp-server.mjs   stdio entrypoint         src/server.mjs   MCP server (tools, resources, prompts, instructions)
+                                              src/session.mjs  cookie jar, fast fetch, Chrome profile (login + guarded POSTs)
+                                              src/format.mjs   concise/detailed renderers   src/errors.mjs  coded errors, timeout, mutex
 skills/altea/        Claude skill             src/rsc.mjs      React Flight payload parser        src/discover.mjs  server-action id discovery
 scripts/install.sh   deps + MCP + skill       scripts/make-fixture.mjs  scrubbed fixtures     scripts/mcp-smoke.mjs  stdio smoke test
-browser/inpage.js    read-only pane helper    test/            node --test (parser, time, filters, rules, fixtures)
+browser/inpage.js    read-only pane helper    test/            node --test (parser, time, filters, rules, fixtures, MCP protocol)
 ~/.altea/            profile/ (signed-in Chrome), cookies.json, actions.json, meta.json   (never in git)
 ```
 
@@ -28,7 +30,7 @@ git clone git@github.com:noorabdalla04/altea-mcp.git ~/Projects/altea-mcp && cd 
 bash scripts/install.sh          # npm install, `claude mcp add -s user altea …`, copies the skill to ~/.claude/skills/altea
 node bin/altea.mjs login         # opens Chrome once; sign in; cookies persist
 node bin/altea.mjs status        # signedIn: true
-npm test                         # 11 unit tests, no network
+npm test                         # unit + in-process MCP protocol tests, no network
 ```
 Requires macOS with Google Chrome and Node 22+. The MCP tools appear in Claude Code sessions started after registration.
 
@@ -48,11 +50,26 @@ altea meta | rules | actions --refresh | status
 `node bin/altea.mjs …` if not linked. Dates: `YYYY-MM-DD | today | tomorrow | mon..sun | next mon | +N`.
 Times: `15:00 | 3pm | 3:30pm`. `--json` for machine output, `--verbose` for timings, `--community toronto` for another club.
 
-## MCP tools
-`altea_status`, `altea_schedule`, `altea_find`, `altea_next`, `altea_instructor`, `altea_event`, `altea_bookings`,
-`altea_book`, `altea_cancel`, `altea_waitlist`, `altea_meta`, `altea_actions`. Filters shared by the read tools:
-`instructor`, `type`, `studio`, `query`, `availableOnly`, `mine`, `after`, `before`, `at` (+`near`), `timeOfDay`,
-`group` (`"all"` for every calendar group of the club).
+## MCP surface (v0.3.0)
+| Tool | Annotations | Purpose |
+| --- | --- | --- |
+| `altea_status` | read | session, rules, action ids |
+| `altea_schedule` | read | day/range listing with filters (`instructor`, `type`, `studio`, `query`, `availableOnly`, `mine`, `after`, `before`, `at`+`near`, `timeOfDay`, `group` incl. `"all"`) |
+| `altea_find` | read | words across all groups for N days |
+| `altea_next` | read | next occurrence + next with spots, waitlist, booking window |
+| `altea_instructor` | read | an instructor's sessions across all groups, "did you mean" |
+| `altea_event` | read | one session in depth: booking, window, options, conflicts, waivers |
+| `altea_bookings` | read | my bookings with free-cancel deadlines |
+| `altea_book` | additive, idempotent | book (guards: window, full, conflict, waiver) |
+| `altea_cancel` | destructive, idempotent | cancel (guard: late cancel) |
+| `altea_waitlist` | additive, idempotent | join / leave |
+| `altea_meta`, `altea_actions` | read | reference data, action-id refresh |
+
+Every tool returns concise text plus `structuredContent` (`status`, `summary`, data); `format: "detailed"` adds
+ids, urls and descriptions; `limit` caps per-day lists with a truncation note. Errors are `ERROR[CODE]` with
+retry-safety and the next valid action. Resources: `altea://rules`, `altea://meta`, `altea://bookings/upcoming`,
+`altea://schedule/{date}`. Prompts: `altea-day-brief`, `altea-book-request`. Design rationale and the checklist
+the server was validated against: `docs/mcp-design.md`.
 
 ## Measured (2026-09-19, Altea Ottawa)
 | Call | Path | Time |

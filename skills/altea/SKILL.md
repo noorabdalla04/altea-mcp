@@ -30,7 +30,10 @@ recovery, or anything not obviously a studio class. Times are America/Toronto.
 | Book / cancel / waitlist | `altea_book`, `altea_cancel`, `altea_waitlist` | `book`, `cancel`, `waitlist join\|leave` |
 | Session check | `altea_status` | `status` |
 
-If the MCP tools are absent (registered after session start) use the CLI via Bash. Never use the built-in
+Tool results are concise text + structured data; ask for `format: "detailed"` only when you need ids/urls for a
+follow-up call. Errors read `ERROR[CODE]: … Next: …`; follow the Next hint (e.g. WINDOW_NOT_OPEN → say when it opens,
+LATE_CANCEL → quote fee + deadline and ask before `force`). If the MCP tools are absent (registered after session
+start) use the CLI via Bash. Never use the built-in
 browser pane for book/cancel (blocked). `book` and `waitlist join` open a Chrome window for ~4 s; say so.
 Reads take 1–2 s per day per group; all-groups ≈ 2 s per day; cancel < 1 s.
 

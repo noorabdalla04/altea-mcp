@@ -26,5 +26,11 @@ if (live) {
   show('who teaches on Monday: Omar', await tool('altea_instructor', { name: 'omar', date: 'mon' }), 900);
   show('next hot yin', await tool('altea_next', { query: 'hot yin' }), 900);
   show('pickleball courts tomorrow at 3pm', await tool('altea_schedule', { date: 'tomorrow', group: 'pickleball', at: '3pm', availableOnly: true }), 900);
+  const c1 = await call('tools/call', { name: 'altea_schedule', arguments: { date: 'tomorrow' } });
+  const c2 = await call('tools/call', { name: 'altea_schedule', arguments: { date: 'tomorrow', format: 'detailed' } });
+  const size = (r) => ({ text: r.result?.content?.[0]?.text?.length ?? 0, structured: JSON.stringify(r.result?.structuredContent ?? {}).length });
+  console.log(`\n== size: concise ${JSON.stringify(size(c1))} vs detailed ${JSON.stringify(size(c2))} (chars)`);
+  show('window guard (3 days out)', await tool('altea_book', { eventId: 'evt_lcOJcTMxMOwCFQ2hEobo_1790071200000' }), 300);
+  show('resource altea://rules', { ms: 0, text: (await call('resources/read', { uri: 'altea://rules' })).result?.contents?.[0]?.text || '' }, 300);
 }
 p.kill();

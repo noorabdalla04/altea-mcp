@@ -10,6 +10,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { HttpSession, ORIGIN, ACTIONS_FILE, META_FILE, TZ, openBrowser, exportCookies, inPageAction } from './session.mjs';
 import { parseRSC, eventsFromRows, deepFindInRows, parseActionResponse } from './rsc.mjs';
 import { discoverActions } from './discover.mjs';
+import { AlteaError } from './errors.mjs';
 
 export const DEFAULT_COMMUNITY_ID = 'com_6ETcyzRKh3aCzpjKKhdT'; // Altea Ottawa
 export const DEFAULT_GROUP = 'Boutique Fitness';
@@ -56,7 +57,7 @@ export function resolveDate(input, today = todayLocal()) {
   if (wd >= 0) { const skipToday = s.startsWith('next '); for (let i = skipToday ? 1 : 0; i < 8; i++) { const c = addDays(today, i); if (weekdayOf(c).toLowerCase() === s.replace(/^next\s+/, '').slice(0, 3)) return c; } }
   const t = Date.parse(input);
   if (!Number.isNaN(t)) return localParts(t).date;
-  throw new Error(`Unrecognised date: ${input}`);
+  throw new AlteaError('BAD_INPUT', `Unrecognised date: ${input}`);
 }
 
 /** '15:00' | '3pm' | '3 pm' | '3:30pm' | '15h' | '1500' → 'HH:MM' (24 h). */
@@ -64,11 +65,11 @@ export function parseTime(input) {
   if (input == null || input === '') return null;
   const s = String(input).trim().toLowerCase().replace(/\s+/g, '');
   let m = s.match(/^(\d{1,2})(?::?(\d{2}))?(am|pm|h)?$/);
-  if (!m) throw new Error(`Unrecognised time: ${input}`);
+  if (!m) throw new AlteaError('BAD_INPUT', `Unrecognised time: ${input}`);
   let h = Number(m[1]); const min = Number(m[2] || 0); const ap = m[3];
   if (ap === 'pm' && h < 12) h += 12;
   if (ap === 'am' && h === 12) h = 0;
-  if (h > 23 || min > 59) throw new Error(`Unrecognised time: ${input}`);
+  if (h > 23 || min > 59) throw new AlteaError('BAD_INPUT', `Unrecognised time: ${input}`);
   return `${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
 }
 const toMin = (hhmm) => { const [h, m] = hhmm.split(':').map(Number); return h * 60 + m; };
@@ -216,7 +217,7 @@ export class Altea {
     if (input.startsWith('com_')) return input;
     const m = await this.meta();
     const hit = m.communities.find((c) => c.name.toLowerCase().includes(input.toLowerCase()));
-    if (!hit) throw new Error(`unknown community "${input}"; known: ${m.communities.map((c) => c.name).join(', ')}`);
+    if (!hit) throw new AlteaError('BAD_INPUT', `unknown community "${input}"; known: ${m.communities.map((c) => c.name).join(', ')}`);
     return hit.id;
   }
 
@@ -226,7 +227,7 @@ export class Altea {
     const c = m.communities.find((x) => x.id === communityId);
     const groups = c?.groups || [];
     const hit = groups.find((g) => g.toLowerCase() === input.toLowerCase()) || groups.find((g) => g.toLowerCase().includes(input.toLowerCase())) || groups.find((g) => norm(g).split(' ').some((w) => w.startsWith(norm(input))));
-    if (!hit) throw new Error(`unknown calendar group "${input}" for ${c?.name || communityId}; known: ${groups.join(', ')}, or "all"`);
+    if (!hit) throw new AlteaError('BAD_INPUT', `unknown calendar group "${input}" for ${c?.name || communityId}; known: ${groups.join(', ')}, or "all"`);
     return hit;
   }
 
@@ -297,7 +298,7 @@ export class Altea {
 
   /** Everything an instructor teaches in a range, across all groups (default), with name suggestions when nothing matches. */
   async instructor({ name, date = 'today', days = 1, group = ALL_GROUPS, ...rest } = {}) {
-    if (!name) throw new Error('instructor name required');
+    if (!name) throw new AlteaError('BAD_INPUT', 'instructor name required');
     const res = await this.schedule({ date, days, group, ...rest });
     const all = res.days.flatMap((d) => d.events);
     const sessions = all.filter((e) => e.instructors.some((n) => norm(n).includes(norm(name))));
@@ -312,7 +313,7 @@ export class Altea {
    * first match at all, first match with spots, waitlist size and booking-window info for the first.
    */
   async next({ query, instructor, type, studio, from = 'today', days = 14, group = ALL_GROUPS, community, communityId, chunk = 3 } = {}) {
-    if (!query && !instructor && !type && !studio) throw new Error('next: give a query, instructor, type or studio');
+    if (!query && !instructor && !type && !studio) throw new AlteaError('BAD_INPUT', 'next: give a query, instructor, type or studio');
     const start = resolveDate(from); const now = Date.now();
     let first = null, firstOpen = null, scannedThrough = start;
     for (let i = 0; i < days && !(first && firstOpen); i += chunk) {
@@ -363,12 +364,12 @@ export class Altea {
 
   /** Event detail + my booking context (perks, policy, payment methods, agreements). Never cached. */
   async event(eventId) {
-    if (!/^evt_[A-Za-z0-9_]+$/.test(eventId)) throw new Error(`bad eventId: ${eventId}`);
+    if (!/^evt_[A-Za-z0-9_]+$/.test(eventId)) throw new AlteaError('BAD_INPUT', `bad eventId: ${eventId} (expected evt_…)`);
     const text = await this.http.rsc(`/booking/${eventId}`);
     const rows = parseRSC(text);
     const ev = deepFindInRows(rows, (j) => j && typeof j === 'object' && !Array.isArray(j) && j.id === eventId && 'startDate' in j);
     const ctx = deepFindInRows(rows, (j) => j && typeof j === 'object' && !Array.isArray(j) && 'activeBookings' in j && 'context' in j);
-    if (!ev && !ctx) throw new Error(`event ${eventId}: not found in payload (wrong id, or event removed)`);
+    if (!ev && !ctx) throw new AlteaError('NOT_FOUND', `event ${eventId}: not found (wrong id, or event removed)`);
     return this.#shapeEvent(ev ?? null, ctx ?? null, eventId);
   }
 
@@ -481,7 +482,7 @@ export class Altea {
   async #runAction(name, args, { eventId, preferPage = false } = {}) {
     const actions = await this.ensureActions({ eventId });
     const id = actions[name];
-    if (!id) throw new Error(`server action ${name} not found in current build (try: altea actions --refresh)`);
+    if (!id) throw new AlteaError('UNKNOWN_ACTION', `server action ${name} not found in the current build`);
     const t0 = Date.now();
     if (!preferPage) {
       const r = await this.http.action('/', id, args);
@@ -505,24 +506,24 @@ export class Altea {
   /** Book an event. Builds the exact payload the web app sends. Guards: window, waiver, conflict, full (override with force). */
   async book({ eventId, perkId, paymentMethodId, force = false }) {
     const info = await this.event(eventId);
-    if (!info.event) throw new Error('event not found');
+    if (!info.event) throw new AlteaError('NOT_FOUND', 'event not found');
     if (info.myBooking) return { ok: true, alreadyBooked: true, booking: info.myBooking, event: info.event };
-    if (info.unsignedAgreements.length && !force) throw new Error(`Unsigned agreement(s) required in the app first: ${info.unsignedAgreements.join(', ')}`);
-    if (info.conflicts.length && !force) throw new Error(`Schedule conflict: ${JSON.stringify(info.conflicts)} (pass force to book anyway)`);
+    if (info.unsignedAgreements.length && !force) throw new AlteaError('UNSIGNED_AGREEMENT', `Unsigned agreement(s) required in the app first: ${info.unsignedAgreements.join(', ')}`);
+    if (info.conflicts.length && !force) throw new AlteaError('CONFLICT', `Schedule conflict with an existing booking`, { details: info.conflicts });
     const opts = info.options.filter((o) => !o.disabled);
     if (!opts.length) {
       const w = info.bookingWindow;
-      if (w?.bookableFrom && !w.bookableNow && !force) throw new Error(`Booking window not open yet: opens ${w.bookableFrom} (48 h before start; the event starts ${info.event.start}). The app offers no membership option before then.`);
-      throw new Error(info.options.length ? 'All membership options are disabled for this event.' : 'No usable membership/perk for this event on your account.');
+      if (w?.bookableFrom && !w.bookableNow && !force) throw new AlteaError('WINDOW_NOT_OPEN', `Booking window not open yet: opens ${w.bookableFrom} (48 h before start; the event starts ${info.event.start}).`, { details: { opensAt: w.bookableFrom, start: info.event.start } });
+      throw new AlteaError('NO_MEMBERSHIP', info.options.length ? 'All membership options are disabled for this event.' : 'No usable membership/perk for this event on your account.');
     }
     let opt = perkId ? opts.find((o) => o.perkId === perkId) : null;
     if (!opt && info.defaultOption) { const m = info.defaultOption.match(/__own__([^|]+)\|([^|]+)\|/); if (m) opt = opts.find((o) => o.perkId === m[1] && o.userPerkId === m[2]); }
     if (!opt) opt = opts.find((o) => o.unlimited) || opts[0];
-    if (!opt) throw new Error('No usable membership/perk for this event on your account.');
-    if (opt.bookableFrom && Date.parse(opt.bookableFrom) > Date.now() && !force) throw new Error(`Booking window not open yet: opens ${opt.bookableFrom} (${opt.bookingWindowMin / 60} h before start; the 48 h rule). Event starts ${info.event.start}.`);
+    if (!opt) throw new AlteaError('NO_MEMBERSHIP', 'No usable membership/perk for this event on your account.');
+    if (opt.bookableFrom && Date.parse(opt.bookableFrom) > Date.now() && !force) throw new AlteaError('WINDOW_NOT_OPEN', `Booking window not open yet: opens ${opt.bookableFrom} (${opt.bookingWindowMin / 60} h before start). Event starts ${info.event.start}.`, { details: { opensAt: opt.bookableFrom, start: info.event.start } });
     const pm = paymentMethodId ? info.paymentMethods.find((p) => p.id === paymentMethodId) : (info.paymentMethods.find((p) => p.default && !p.expired) || info.paymentMethods.find((p) => !p.expired));
-    if (!pm) throw new Error('No payment method on file (the app requires one for the late-cancellation fee).');
-    if (info.event.full && !force) throw new Error('Event is full (0 spots). Use waitlist join instead.');
+    if (!pm) throw new AlteaError('NO_MEMBERSHIP', 'No payment method on file (the app requires one for the late-cancellation fee).', { next: 'Noor must add a card in the Altea app; never add one on his behalf.' });
+    if (info.event.full && !force) throw new AlteaError('EVENT_FULL', 'Event is full (0 spots).');
     const args = [{ eventId, bookings: [{ agreements: [], equipment: '$undefined', paymentMethodId: pm.id, perkId: opt.perkId, perkUserId: info.userId, price: opt.price ?? 0, userPerkId: opt.userPerkId, userId: info.userId }] }];
     this.log(`book payload ${JSON.stringify(args)}`);
     const r = await this.#runAction('confirmBookingAction', args, { eventId, preferPage: true });
@@ -535,9 +536,9 @@ export class Altea {
   async cancel({ bookingId, eventId, force = false }) {
     let info = null;
     if (eventId) { info = await this.event(eventId); if (!info.myBooking) return { ok: true, alreadyCancelled: true, event: info.event }; bookingId = bookingId || info.myBooking.bookingId; }
-    if (!bookingId) throw new Error('need bookingId or eventId');
+    if (!bookingId) throw new AlteaError('BAD_INPUT', 'need bookingId or eventId');
     const policy = info?.myBooking?.cancellation;
-    if (policy?.late && !force) throw new Error(`Late cancellation: inside the ${policy.windowHours} h window (deadline was ${policy.deadline}); fee ${policy.feeText ?? 'applies'}. Pass force to cancel anyway.`);
+    if (policy?.late && !force) throw new AlteaError('LATE_CANCEL', `Late cancellation: inside the ${policy.windowHours} h window (deadline was ${policy.deadline}); fee ${policy.feeText ?? 'applies'}.`, { details: { deadline: policy.deadline, fee: policy.feeText } });
     const r = await this.#runAction('cancelBookingAction', [{ bookingId }], { eventId });
     const after = eventId ? await this.event(eventId).catch(() => null) : null;
     const ok = r.status === 200 && !r.serverError && (!after || !after.myBooking);
@@ -545,7 +546,7 @@ export class Altea {
   }
 
   async waitlist({ eventId, action }) {
-    if (action !== 'join' && action !== 'leave') throw new Error('action must be join|leave');
+    if (action !== 'join' && action !== 'leave') throw new AlteaError('BAD_INPUT', 'action must be join|leave');
     const r = await this.#runAction(action === 'join' ? 'joinWaitlistAction' : 'leaveWaitlistAction', [{ eventId }], { eventId, preferPage: action === 'join' });
     const after = await this.event(eventId).catch(() => null);
     return { ok: r.status === 200 && !r.serverError, via: r.via, serverError: r.serverError, result: r.result, waitlistPosition: after?.waitlistPosition ?? null, waitlistedUsers: after?.waitlistedUsers ?? null, event: after?.event ?? null };
