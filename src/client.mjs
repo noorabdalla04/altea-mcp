@@ -264,7 +264,7 @@ export class Altea {
    * Range of days × one or all calendar groups, fetched in parallel, merged per day, filtered.
    * filters: instructor, type, studio, query, availableOnly, mine, after, before, at, near, timeOfDay
    */
-  async schedule({ date = 'today', days = 1, group, community, communityId, withDescription = false, concurrency = 8, nocache = false, ...rawFilters } = {}) {
+  async schedule({ date = 'today', days = 1, group, community, communityId, withDescription = false, concurrency = 12, nocache = false, ...rawFilters } = {}) {
     const cid = communityId || await this.resolveCommunity(community);
     const groups = await this.groupsFor(cid, group);
     const filters = normaliseFilters(rawFilters);
@@ -330,7 +330,7 @@ export class Altea {
     if (first) {
       try {
         const d = await this.event(first.id);
-        detail = { waitlistedUsers: d.waitlistedUsers, myBooking: d.myBooking, bookableFrom: d.options[0]?.bookableFrom ?? null, bookableNow: d.options[0]?.bookableNow ?? null, cancellation: d.options[0]?.cancellation ?? null };
+        detail = { waitlistedUsers: d.waitlistedUsers, myBooking: d.myBooking, bookableFrom: d.bookingWindow?.bookableFrom ?? null, bookableNow: d.bookingWindow?.bookableNow ?? null, cancellation: d.options[0]?.cancellation ?? shapePolicy(null, Date.parse(first.start)) };
       } catch { /* detail is optional */ }
     }
     return { query: query || instructor || type || studio, from: start, searchedThrough: scannedThrough, next: first, nextWithSpots: firstOpen, sameEvent: !!(first && firstOpen && first.id === firstOpen.id), detail };
@@ -391,6 +391,13 @@ export class Altea {
         cancellation: shapePolicy(p.cancellation, startMs),
       };
     });
+    const opens = out.options.map((o) => o.bookableFrom).filter(Boolean).sort()[0] || (startMs ? localParts(startMs - RULES.bookingWindowMin * 60_000).iso : null);
+    out.bookingWindow = {
+      bookableFrom: opens,
+      bookableNow: opens ? Date.parse(opens) <= Date.now() : null,
+      source: out.options.some((o) => o.bookingWindowSource === 'app') ? 'app' : 'rules',
+      usableOptions: out.options.filter((o) => !o.disabled).length,
+    };
     out.defaultOption = (ctx.possibleBookings || [])[0]?.defaultSelectedPerk ?? null;
     out.paymentMethods = (me.paymentMethods || []).map((p) => ({ id: p.id, label: p.label, brand: p.model, default: !!p.default, expired: !!p.expired }));
     out.unsignedAgreements = (me.unsignedAgreements || []).map((a) => (typeof a === 'string' ? a : a.title || a.id));
@@ -503,6 +510,11 @@ export class Altea {
     if (info.unsignedAgreements.length && !force) throw new Error(`Unsigned agreement(s) required in the app first: ${info.unsignedAgreements.join(', ')}`);
     if (info.conflicts.length && !force) throw new Error(`Schedule conflict: ${JSON.stringify(info.conflicts)} (pass force to book anyway)`);
     const opts = info.options.filter((o) => !o.disabled);
+    if (!opts.length) {
+      const w = info.bookingWindow;
+      if (w?.bookableFrom && !w.bookableNow && !force) throw new Error(`Booking window not open yet: opens ${w.bookableFrom} (48 h before start; the event starts ${info.event.start}). The app offers no membership option before then.`);
+      throw new Error(info.options.length ? 'All membership options are disabled for this event.' : 'No usable membership/perk for this event on your account.');
+    }
     let opt = perkId ? opts.find((o) => o.perkId === perkId) : null;
     if (!opt && info.defaultOption) { const m = info.defaultOption.match(/__own__([^|]+)\|([^|]+)\|/); if (m) opt = opts.find((o) => o.perkId === m[1] && o.userPerkId === m[2]); }
     if (!opt) opt = opts.find((o) => o.unlimited) || opts[0];

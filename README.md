@@ -60,6 +60,7 @@ Times: `15:00 | 3pm | 3:30pm`. `--json` for machine output, `--verbose` for timi
 | one day, one group (100–170 KB payload) | Node fetch | 1.2–1.7 s (server render) |
 | one day, all 6 groups | Node fetch, parallel | 1.9 s |
 | 5 days, one group | Node fetch, parallel | 2.5 s |
+| 7 days, all 6 groups (`who sara --days 7`) | Node fetch, 12 parallel | 7.6 s |
 | `next hot yin` (3-day chunks, all groups, + detail) | Node fetch | 2.5 s |
 | cancel / waitlist leave | Node `POST /` | 0.7–0.9 s |
 | book / waitlist join | headed Chrome, in-page `POST /booking/<id>` | 3.9–4.0 s |

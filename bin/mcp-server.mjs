@@ -85,7 +85,7 @@ server.tool('altea_instructor', 'Everything a given instructor teaches on a date
   group: z.string().optional().describe(groupDesc + ' Default "all".'), community: scheduleShape.community,
 }, run((c, a) => c.instructor(a)));
 
-server.tool('altea_event', 'Details for one event: description, spots, instructors, my booking (bookingId + free-cancel deadline / fee), membership options with bookableFrom (48 h window) and bookableNow, conflicts, unsigned waivers, waitlist size. Reads only.', { eventId: z.string().describe('evt_… id from altea_schedule / altea_find / altea_next') }, run((c, a) => c.event(a.eventId)));
+server.tool('altea_event', 'Details for one event: description, spots, instructors, my booking (bookingId + free-cancel deadline / fee), membership options and a bookingWindow summary (bookableFrom / bookableNow, 48 h rule), conflicts, unsigned waivers, waitlist size. Reads only.', { eventId: z.string().describe('evt_… id from altea_schedule / altea_find / altea_next') }, run((c, a) => c.event(a.eventId)));
 
 server.tool('altea_bookings', 'My upcoming (or past) bookings with bookingId, status, canCancel, the free-cancellation deadline (start − 8 h) and whether cancelling now would be late (fee). Reads only.', {
   from: z.string().optional().describe(dateDesc + ' Default today.'), to: z.string().optional().describe('End date (inclusive).'), days: z.number().int().min(1).max(120).optional().describe('Range length when `to` is absent (default 30).'),
