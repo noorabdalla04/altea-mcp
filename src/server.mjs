@@ -30,7 +30,7 @@ const groupDesc = 'Calendar group: "Boutique Fitness" (default for plain class s
 const formatField = z.enum(['concise', 'detailed']).optional().describe('concise (default): short text lines + minimal structured list. detailed: full event objects with ids, urls, instructor ids, descriptions — use only when a follow-up call needs them.');
 const limitField = z.number().int().min(1).max(200).optional().describe('Max events per day in the result (default 60); a truncation note tells you when more exist.');
 const filterShape = {
-  instructor: z.string().optional().describe('Instructor name or first name, substring match, e.g. "Timo", "Omar".'),
+  instructor: z.string().optional().describe('Instructor name or first name, substring match, e.g. "Timo", "X".'),
   type: z.string().optional().describe('Event-type tag substring: Cycle, HIIT, Barre, Boxing, Hot Yoga, Hyrox, LF3, LF3 Strength, LF3 Tread, Mobility, Pilates, Reformer Pilates, Strength, Yoga.'),
   studio: z.string().optional().describe('Studio / calendar substring, e.g. "Cycle Studio", "Reformer", "Pickleball Courts", "Recovery Lounge".'),
   query: z.string().optional().describe('Free-text words matched over title, studio, instructors and types; every word must match.'),
@@ -120,8 +120,8 @@ export function createAlteaServer({ makeClient, log = (m) => process.stderr.writ
 
   server.registerTool('altea_instructor', {
     title: 'Sessions taught by an instructor',
-    description: 'Everything a named instructor teaches on a date or over a range, across every calendar group (instructors appear in Boutique Fitness and Personalized Performance alike). Matches by substring on the name ("omar", "timo c"); when nothing matches it returns "did you mean" suggestions from the instructors seen. Use for "which sessions does Omar run on Monday", "anything with Timo this week". For a class name rather than a person use altea_find or altea_next.',
-    inputSchema: { name: z.string().min(1).describe('Instructor name or first name, e.g. "Omar".'), date: z.string().optional().describe(dateDesc + ' Default today.'), days: z.number().int().min(1).max(45).optional().describe('Range length (default 1).'), group: z.string().optional().describe(groupDesc + ' Default "all".'), community: z.string().optional(), format: formatField, limit: limitField },
+    description: 'Everything a named instructor teaches on a date or over a range, across every calendar group (instructors appear in Boutique Fitness and Personalized Performance alike). Matches by substring on the name ("x", "timo c"); when nothing matches it returns "did you mean" suggestions from the instructors seen. Use for "which sessions does instructor X run on Monday", "anything with Timo this week". For a class name rather than a person use altea_find or altea_next.',
+    inputSchema: { name: z.string().min(1).describe('Instructor name or first name, e.g. "X".'), date: z.string().optional().describe(dateDesc + ' Default today.'), days: z.number().int().min(1).max(45).optional().describe('Range length (default 1).'), group: z.string().optional().describe(groupDesc + ' Default "all".'), community: z.string().optional(), format: formatField, limit: limitField },
     outputSchema: instructorOut, annotations: READ,
   }, run(async (c, a) => { const { format, limit, ...rest } = a; return renderInstructor(await c.instructor(rest), { format, limit }); }));
 

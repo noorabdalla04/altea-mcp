@@ -20,7 +20,7 @@ questions, courts, recovery, or anything not obviously a studio class. Times are
 ## Tools (prefer MCP; CLI is equivalent: `node bin/altea.mjs …` in the altea-mcp checkout)
 | Question shape | MCP tool | CLI |
 | --- | --- | --- |
-| Who teaches / sessions by <name> on <day> | `altea_instructor {name, date, days}` | `who omar mon` |
+| Who teaches / sessions by <name> on <day> | `altea_instructor {name, date, days}` | `who x mon` |
 | Next <class or activity>, spots left | `altea_next {query}` | `next hot yin` |
 | Courts / classes at a time, open only | `altea_schedule {date, group:"courts", at:"3pm", availableOnly}` | `schedule tomorrow --group courts --at 3pm --available` |
 | Day / week debrief with filters | `altea_schedule {date, days, instructor, type, studio, timeOfDay, after, before}` | `schedule tomorrow --days 3` |

@@ -27,7 +27,17 @@ function replaceBalanced(text, keyPattern, replacement) {
   }
   return out;
 }
-/** Scrub a payload: user ids, booking/perk/payment ids, PII keys, payment methods, linked accounts, embedded images. */
+const instructorMap = new Map();
+const pseudo = (name) => { if (!instructorMap.has(name)) instructorMap.set(name, `Instructor ${String.fromCharCode(65 + (instructorMap.size % 26))}${instructorMap.size >= 26 ? Math.floor(instructorMap.size / 26) : ''}`); return instructorMap.get(name); };
+/** Staff are real people: replace their display names with stable placeholders and drop their bios. */
+function pseudonymiseInstructors(t) {
+  t = t.replace(/("id":"res_[A-Za-z0-9]+","name":")((?:[^"\\]|\\.)*)(")/g, (m, a, name, c) => a + pseudo(name) + c);
+  t = t.replace(/("id":"res_[A-Za-z0-9]+","imageUrl":"[^"]*","label":")((?:[^"\\]|\\.)*)(")/g, (m, a, name, c) => a + pseudo(name) + c);
+  t = t.replace(/("id":"res_[A-Za-z0-9]+","name":"[^"]*","imageUrl":"[^"]*","description":")((?:[^"\\]|\\.)*)(")/g, '$1[redacted]$3');
+  return t;
+}
+
+/** Scrub a payload: user ids, booking/perk/payment ids, PII keys, payment methods, linked accounts, embedded images, staff names. */
 export function scrubRSC(text) {
   const uid = (text.match(/"currentUser":\{[^}]*?"id":"([^"]+)"/) || text.match(/"uid":"([^"]+)"/) || [])[1];
   const rows = parseRows(text);
@@ -41,6 +51,7 @@ export function scrubRSC(text) {
     t = replaceBalanced(t, '"linkedAccounts":', '[]');
     for (const key of PII_KEYS) t = t.replace(new RegExp(`"${key}":"(?:[^"\\\\]|\\\\.)*"`, 'g'), `"${key}":"[redacted]"`);
     t = t.replace(/data:image\/[a-z]+;base64,[A-Za-z0-9+/=]+/g, '[redacted]');
+    t = pseudonymiseInstructors(t);
     r.raw = t;
   }
   return serializeRows(rows);

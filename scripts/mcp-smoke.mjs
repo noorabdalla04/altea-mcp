@@ -23,7 +23,7 @@ const tools = (await call('tools/list', {})).result.tools;
 console.log('tools:', tools.map((t) => t.name).join(', '));
 show('status', await tool('altea_status', {}), 300);
 if (live) {
-  show('who teaches on Monday: Omar', await tool('altea_instructor', { name: 'omar', date: 'mon' }), 900);
+  show('who teaches on Monday (first name from the schedule)', await (async () => { const s = await tool('altea_schedule', { date: 'mon', group: 'all', format: 'detailed', limit: 200 }); const first = ((s.s?.days?.[0]?.events || []).flatMap((e) => e.instructors || []).find(Boolean) || 'x').split(' ')[0]; return tool('altea_instructor', { name: first, date: 'mon' }); })(), 900);
   show('next hot yin', await tool('altea_next', { query: 'hot yin' }), 900);
   show('pickleball courts tomorrow at 3pm', await tool('altea_schedule', { date: 'tomorrow', group: 'pickleball', at: '3pm', availableOnly: true }), 900);
   const c1 = await call('tools/call', { name: 'altea_schedule', arguments: { date: 'tomorrow' } });

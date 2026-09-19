@@ -4,7 +4,7 @@ How an assistant should map the member's questions onto the `altea` tools (MCP n
 
 | Question | Call | Answer with |
 | --- | --- | --- |
-| "Which sessions does Omar run on Monday?" | `altea_instructor {name:"omar", date:"mon"}` (`altea who omar mon`) | one line per session: time, title, studio, spots; note the group when it is not Boutique Fitness |
+| "Which sessions does instructor X run on Monday?" | `altea_instructor {name:"x", date:"mon"}` (`altea who x mon`) | one line per session: time, title, studio, spots; note the group when it is not Boutique Fitness |
 | "How many spots left in the next Hot Yin?" | `altea_next {query:"hot yin"}` (`altea next hot yin`) | spots or FULL + waitlist size, whether bookable now, and the next one with spots if different |
 | "Any pickleball courts open tomorrow at 3 pm?" | `altea_schedule {date:"tomorrow", group:"courts", at:"3pm", availableOnly:true}` | the courts and their spots; if none, drop `availableOnly` and say which are full |
 | "What's on tomorrow morning?" | `altea_schedule {date:"tomorrow", timeOfDay:"morning"}` (Boutique Fitness) | grouped by time |

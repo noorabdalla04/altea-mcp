@@ -22,8 +22,8 @@ class Stub {
   }
   async find(a) { const s = await this.schedule({ ...a, group: a.group || 'all' }); return { ...s, events: s.days.flatMap((d) => d.events) }; }
   async instructor(a) {
-    if (a.name === 'nobody') return { name: a.name, from: '2026-09-21', to: '2026-09-21', groups: ['A', 'B'], count: 0, sessions: [], instructorsSeen: 5, suggestions: ['Omar A.'] };
-    return { name: a.name, matchedNames: ['Omar A.'], ambiguous: false, from: '2026-09-21', to: '2026-09-21', groups: ['A', 'B'], count: 1, sessions: [ev({ instructors: ['Omar A.'], group: 'Personalized Performance', date: '2026-09-21', weekday: 'Mon' })], instructorsSeen: 5, suggestions: [] };
+    if (a.name === 'nobody') return { name: a.name, from: '2026-09-21', to: '2026-09-21', groups: ['A', 'B'], count: 0, sessions: [], instructorsSeen: 5, suggestions: ['Instructor X'] };
+    return { name: a.name, matchedNames: ['Instructor X'], ambiguous: false, from: '2026-09-21', to: '2026-09-21', groups: ['A', 'B'], count: 1, sessions: [ev({ instructors: ['Instructor X'], group: 'Personalized Performance', date: '2026-09-21', weekday: 'Mon' })], instructorsSeen: 5, suggestions: [] };
   }
   async next(a) { return { query: a.query, from: '2026-09-19', searchedThrough: '2026-09-21', next: ev(), nextWithSpots: ev(), sameEvent: true, detail: { waitlistedUsers: 0, myBooking: null, bookableFrom: '2026-09-18T14:00-04:00', bookableNow: true, cancellation: policy } }; }
   async event(id) {
@@ -112,10 +112,10 @@ test('next / instructor / bookings / book / waitlist render summaries', async ()
   const { client, close } = await harness();
   const n = await client.callTool({ name: 'altea_next', arguments: { query: 'hot yin' } });
   assert.match(text(n), /^Next "hot yin": Sun 2026-09-20 14:00/); assert.match(text(n), /bookable now/); assert.equal(n.structuredContent.bookableNow, true);
-  const i = await client.callTool({ name: 'altea_instructor', arguments: { name: 'omar', date: 'mon' } });
-  assert.match(text(i), /^1 session by Omar A\./); assert.match(text(i), /\[Personalized Performance\]/);
+  const i = await client.callTool({ name: 'altea_instructor', arguments: { name: 'x', date: 'mon' } });
+  assert.match(text(i), /^1 session by Instructor X/); assert.match(text(i), /\[Personalized Performance\]/);
   const none = await client.callTool({ name: 'altea_instructor', arguments: { name: 'nobody' } });
-  assert.equal(none.structuredContent.status, 'warning'); assert.match(text(none), /Did you mean: Omar A\./);
+  assert.equal(none.structuredContent.status, 'warning'); assert.match(text(none), /Did you mean: Instructor X/);
   const b = await client.callTool({ name: 'altea_bookings', arguments: {} });
   assert.match(text(b), /^1 booking/); assert.match(text(b), /free cancel until 2026-09-20T06:00/); assert.equal(b.structuredContent.bookings[0].cancelBy, policy.deadline);
   const bk = await client.callTool({ name: 'altea_book', arguments: { eventId: 'evt_a_1' } });

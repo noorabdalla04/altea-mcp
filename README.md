@@ -3,7 +3,7 @@
 [![test](https://github.com/noorabdalla04/altea-mcp/actions/workflows/test.yml/badge.svg)](https://github.com/noorabdalla04/altea-mcp/actions/workflows/test.yml)
 
 An unofficial [Model Context Protocol](https://modelcontextprotocol.io) server and CLI for the **Altea Active**
-booking app (myaltea.app). It lets an AI assistant such as Claude answer *"which sessions does Omar run on
+booking app (myaltea.app). It lets an AI assistant such as Claude answer *"which sessions does instructor X run on
 Monday?"*, *"how many spots are left in the next Hot Yin?"*, *"any pickleball courts open tomorrow at 3 pm?"*,
 list your bookings with their cancellation deadlines, and book, cancel or join a waitlist when you ask.
 
@@ -56,7 +56,7 @@ The app's own values (per membership option) take precedence over the defaults w
 
 ## CLI
 ```bash
-node bin/altea.mjs who omar mon                          # everything Omar teaches next Monday, all groups
+node bin/altea.mjs who x mon                          # everything instructor X teaches next Monday, all groups
 node bin/altea.mjs next hot yin                          # next Hot Yin: spots, waitlist, bookable now?
 node bin/altea.mjs schedule tomorrow --group courts --at 3pm --available
 node bin/altea.mjs schedule "this week" --instructor timo

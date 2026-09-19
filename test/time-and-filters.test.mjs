@@ -41,7 +41,7 @@ test('at/near/timeOfDay/query/instructor filters', () => {
   assert.equal(matchesFilters(yin, { query: 'hot yin' }), true);
   assert.equal(matchesFilters(yin, { query: 'yin sara' }), true);
   assert.equal(matchesFilters(yin, { instructor: 'sara' }), true);
-  assert.equal(matchesFilters(yin, { instructor: 'omar' }), false);
+  assert.equal(matchesFilters(yin, { instructor: 'x' }), false);
   assert.equal(matchesFilters(yin, { type: 'hot yoga' }), true);
   assert.equal(matchesFilters(ev, { after: '15:00', before: '16:00' }), true);
 });
@@ -57,8 +57,8 @@ test('shapePolicy applies the 8 h rule and detects late cancellation', () => {
 });
 
 test('rankNames suggests close instructor names', () => {
-  const s = rankNames('omar', ['Amy M.', 'Omar A.', 'Sara N.', 'Timo C.']);
-  assert.equal(s[0], 'Omar A.');
-  const fuzzy = rankNames('omer', ['Amy M.', 'Omar A.', 'Sara N.']);
-  assert.equal(fuzzy[0], 'Omar A.');
+  const s = rankNames('instructor', ['Amy M.', 'Instructor X', 'Sara N.', 'Timo C.']);
+  assert.equal(s[0], 'Instructor X');
+  const fuzzy = rankNames('instructr', ['Amy M.', 'Instructor X', 'Sara N.']);
+  assert.equal(fuzzy[0], 'Instructor X');
 });
