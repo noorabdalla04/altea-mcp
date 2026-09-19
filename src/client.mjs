@@ -186,17 +186,18 @@ async function mapLimit(items, limit, fn) {
 export class Altea {
   #cache = new Map();
 
-  // Headed by default: the booking backend rejects headless Chrome ("unable to process your booking"),
-  // verified 2026-09-19. Set ALTEA_HEADLESS=1 to try headless again.
-  constructor({ log = () => {}, headless = process.env.ALTEA_HEADLESS === '1', cacheTtlMs = Number(process.env.ALTEA_CACHE_TTL_MS ?? 45_000) } = {}) {
-    this.log = log; this.headless = headless; this.cacheTtlMs = cacheTtlMs;
+  // Window mode for the guarded in-page actions (book, waitlist join). ALTEA_WINDOW=visible|hidden|headless|auto.
+  // auto = try the preferred quiet mode first, then fall back to a visible window when the backend refuses.
+  constructor({ log = () => {}, headless = process.env.ALTEA_HEADLESS === '1', windowMode = process.env.ALTEA_WINDOW || (process.env.ALTEA_HEADLESS === '1' ? 'headless' : 'auto'), cacheTtlMs = Number(process.env.ALTEA_CACHE_TTL_MS ?? 45_000) } = {}) {
+    this.log = log; this.headless = headless; this.windowMode = windowMode; this.cacheTtlMs = cacheTtlMs;
+    this.quietMode = process.env.ALTEA_QUIET_MODE || 'hidden'; // what "auto" tries first
     this.http = null; this.browser = null; this.page = null; this.actions = null; this._meta = null;
   }
 
   async init() { if (!this.http) this.http = await HttpSession.load(); return this; }
 
   async close() {
-    if (this.browser) { try { await exportCookies(this.browser.context); } catch { /* ignore */ } await this.browser.close().catch(() => {}); this.browser = null; this.page = null; }
+    await this.#closeBrowser();
     if (this.http) await this.http.persist();
   }
 
@@ -470,12 +471,27 @@ export class Altea {
     return this.actions;
   }
 
-  async #page() {
+  async #page(mode) {
+    if (this.page && this.browser?.mode !== mode) await this.#closeBrowser();
     if (!this.page) {
-      this.browser = await openBrowser({ headless: this.headless, log: this.log });
+      this.browser = await openBrowser({ mode, log: this.log });
+      this.browser.mode = mode;
       this.page = this.browser.context.pages()[0] || (await this.browser.context.newPage());
     }
     return this.page;
+  }
+
+  async #closeBrowser() {
+    if (!this.browser) return;
+    try { await exportCookies(this.browser.context); } catch { /* ignore */ }
+    await this.browser.close().catch(() => {});
+    this.browser = null; this.page = null;
+  }
+
+  /** Did the backend refuse the action because it judged the page to be a bot? */
+  static refusedAsBot(parsed) {
+    const msg = parsed?.result?.data?.message || parsed?.serverError || '';
+    return parsed?.result?.data?.success === false && /unable to process/i.test(String(msg));
   }
 
   /** Fast path first (POST "/"), then the in-page path if the route rejects or the action is unknown there. */
@@ -491,14 +507,21 @@ export class Altea {
       if (r.status === 200 && !unknown) { this.log(`${name}: fast path ${Date.now() - t0}ms`); this.clearCache(); return { via: 'http', status: r.status, revalidated: r.revalidated, result: parsed.result, serverError: parsed.serverError }; }
       this.log(`${name}: fast path unavailable (${r.status}${unknown ? ', unknown on /' : ''}), using page`);
     }
-    const page = await this.#page();
-    const r = await inPageAction(page, eventId ? `/booking/${eventId}` : '/booking', id, args);
-    try { await exportCookies(this.browser.context); } catch { /* ignore */ }
-    if (!this.headless) { await this.browser.close().catch(() => {}); this.browser = null; this.page = null; } // don't leave a window up
-    const parsed = parseActionResponse(r.text);
-    this.log(`${name}: page path ${Date.now() - t0}ms`);
+    const modes = this.windowMode === 'auto' ? [this.quietMode, 'visible'] : [this.windowMode];
+    let r, parsed, usedMode;
+    for (const mode of modes) {
+      const page = await this.#page(mode);
+      r = await inPageAction(page, eventId ? `/booking/${eventId}` : '/booking', id, args);
+      parsed = parseActionResponse(r.text);
+      usedMode = mode;
+      await this.#closeBrowser(); // never leave a window (or a hidden Chrome) behind
+      if (Altea.refusedAsBot(parsed) && mode !== modes[modes.length - 1]) { this.log(`${name}: refused in ${mode} mode, retrying ${modes[modes.indexOf(mode) + 1]}`); continue; }
+      break;
+    }
+    this.log(`${name}: page path (${usedMode}) ${Date.now() - t0}ms`);
     this.clearCache();
-    return { via: 'page', status: r.status, revalidated: r.revalidated, result: parsed.result, serverError: parsed.serverError, raw: r.status !== 200 ? r.text.slice(0, 500) : undefined };
+    if (parsed.result?.data && typeof parsed.result.data === 'object') { delete parsed.result.data.email; delete parsed.result.data.userId; } // no PII in results
+    return { via: `page:${usedMode}`, status: r.status, revalidated: r.revalidated, result: parsed.result, serverError: parsed.serverError, raw: r.status !== 200 ? r.text.slice(0, 500) : undefined };
   }
 
   // ----- actions -----

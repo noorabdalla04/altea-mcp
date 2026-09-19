@@ -86,7 +86,9 @@ function absorbSetCookies(jar, res) {
 // ---------- fast HTTP session ----------
 
 export class HttpSession {
-  constructor(cookies) { this.cookies = cookies; this.dirty = false; }
+  constructor(cookies, { readTimeoutMs = Number(process.env.ALTEA_READ_TIMEOUT_MS ?? 30_000), actionTimeoutMs = Number(process.env.ALTEA_ACTION_TIMEOUT_MS ?? 60_000) } = {}) {
+    this.cookies = cookies; this.dirty = false; this.readTimeoutMs = readTimeoutMs; this.actionTimeoutMs = actionTimeoutMs;
+  }
 
   static async load() { return new HttpSession(await loadCookies()); }
 
@@ -98,7 +100,7 @@ export class HttpSession {
 
   /** GET an RSC payload for a path. Throws NotSignedIn when the app served the auth shell instead. */
   async rsc(path) {
-    const res = await fetch(ORIGIN + path, { headers: this.headers({ rsc: '1', accept: '*/*' }), redirect: 'manual' });
+    const res = await fetch(ORIGIN + path, { headers: this.headers({ rsc: '1', accept: '*/*' }), redirect: 'manual', signal: AbortSignal.timeout(this.readTimeoutMs) });
     if (absorbSetCookies(this.cookies, res)) this.dirty = true;
     const text = await res.text();
     if (res.status >= 300 && res.status < 400) throw new NotSignedIn(`redirected to ${res.headers.get('location')}`);
@@ -109,7 +111,7 @@ export class HttpSession {
 
   /** GET page HTML (for chunk discovery). */
   async html(url) {
-    const res = await fetch(url, { headers: this.headers({ accept: 'text/html' }) });
+    const res = await fetch(url, { headers: this.headers({ accept: 'text/html' }), signal: AbortSignal.timeout(this.readTimeoutMs) });
     return res.text();
   }
 
@@ -123,6 +125,7 @@ export class HttpSession {
       headers: this.headers({ 'next-action': actionId, accept: 'text/x-component', 'content-type': 'text/plain;charset=UTF-8' }),
       body: JSON.stringify(args),
       redirect: 'manual',
+      signal: AbortSignal.timeout(this.actionTimeoutMs),
     });
     if (absorbSetCookies(this.cookies, res)) this.dirty = true;
     const text = await res.text();
@@ -150,21 +153,35 @@ async function pw() { if (!_pw) _pw = await import('playwright-core'); return _p
  * Open the persistent profile. Falls back to a throwaway context seeded from the
  * cookie jar when the profile is locked by another process (MCP + CLI at once).
  */
-export async function openBrowser({ headless = true, log = () => {} } = {}) {
+/**
+ * Window modes for the guarded (in-page) actions:
+ *   visible   headed window in front (always accepted by the backend)
+ *   hidden    headed Chrome hidden from the screen via macOS System Events before its page opens (needs Automation permission)
+ *   headless  no window (accepted for waitlist joins, refused for bookings in testing)
+ */
+export const WINDOW_MODES = ['visible', 'hidden', 'headless'];
+
+export async function openBrowser({ headless = true, mode, log = () => {} } = {}) {
   const { chromium } = await pw();
   await mkdir(PROFILE_DIR, { recursive: true });
+  mode = mode || (headless ? 'headless' : 'visible');
+  const args = ['--disable-blink-features=AutomationControlled', '--no-first-run', '--no-default-browser-check'];
+  // hidden: launch normally, then hide the Chrome process via System Events right away (the initial about:blank
+  // window exists for a fraction of a second). --no-startup-window breaks Playwright's persistent launch, and an
+  // off-screen --window-position is clamped back on-screen by macOS, so neither is an option.
   const common = {
     channel: 'chrome',
-    headless,
+    headless: mode === 'headless',
     viewport: { width: 1100, height: 900 },
     locale: 'en-CA',
     timezoneId: TZ,
-    args: ['--disable-blink-features=AutomationControlled', '--no-first-run', '--no-default-browser-check'],
+    args,
     ignoreDefaultArgs: ['--enable-automation'],
   };
   try {
     const context = await chromium.launchPersistentContext(PROFILE_DIR, common);
-    log(`chrome: persistent profile (${headless ? 'headless' : 'headed'})`);
+    log(`chrome: persistent profile (${mode})`);
+    if (mode === 'hidden') { const t0 = Date.now(); await hideChromeWindows(log); log(`chrome: window visible for ~${Date.now() - t0} ms before hide`); }
     return { context, persistent: true, close: () => context.close() };
   } catch (e) {
     if (!/ProcessSingleton|already running|profile.*in use|Target page, context or browser has been closed|Failed to launch/i.test(String(e))) throw e;
@@ -175,6 +192,25 @@ export async function openBrowser({ headless = true, log = () => {} } = {}) {
     if (cookies.length) await context.addCookies(cookies.map((c) => ({ name: c.name, value: c.value, domain: c.domain, path: c.path || '/', expires: c.expires ?? -1, httpOnly: !!c.httpOnly, secure: !!c.secure, sameSite: c.sameSite || 'Lax' })));
     return { context, persistent: false, close: () => browser.close() };
   }
+}
+
+/**
+ * Hide the Chrome process that runs our profile (macOS, via System Events; needs Automation permission).
+ * Only the browser (main) process owns windows, so one osascript call is enough. Best effort.
+ */
+export async function hideChromeWindows(log = () => {}) {
+  try {
+    const { execFile } = await import('node:child_process');
+    const { promisify } = await import('node:util');
+    const run = promisify(execFile);
+    const { stdout } = await run('ps', ['-axo', 'pid=,command=']);
+    const main = stdout.split('\n').find((l) => l.includes(`user-data-dir=${PROFILE_DIR}`) && !l.includes('--type='));
+    const pid = main?.trim().split(/\s+/)[0];
+    if (!pid) { log('chrome: could not find the browser process to hide'); return false; }
+    await run('osascript', ['-e', `tell application "System Events" to set visible of (first process whose unix id is ${pid}) to false`]);
+    log(`chrome: hidden (pid ${pid})`);
+    return true;
+  } catch (e) { log(`chrome: could not hide window: ${e.message.split('\n')[0]}`); return false; }
 }
 
 /** Export the profile's cookies for the fast path. */

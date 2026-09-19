@@ -10,7 +10,7 @@
 //   altea who <name> [date] [--days N]                   everything an instructor teaches (all groups)
 //   altea event <evt_id> [--json]
 //   altea bookings [--from D] [--days 30] [--json]
-//   altea book <evt_id> [--force]                        opens Chrome ~4 s (bot-guarded route)
+//   altea book <evt_id> [--force] [--window MODE]        bot-guarded route: hidden Chrome by default
 //   altea cancel <bkg_id|evt_id> [--force]               refuses late cancels (8 h rule) unless --force
 //   altea waitlist join|leave <evt_id>
 //
@@ -93,7 +93,7 @@ async function main() {
   if (cmd === 'login') { await login({ log: (m) => process.stderr.write(m + '\n') }); return; }
   if (cmd === 'rules') return out({ ...RULES, note: 'cancel ≥ 8 h before start or pay the late fee; booking opens 48 h before start' });
 
-  const client = new Altea({ log, headless: flags.headed ? false : undefined });
+  const client = new Altea({ log, windowMode: flags.window || (flags.headed ? 'visible' : undefined) });
   await client.init();
   try {
     switch (cmd) {

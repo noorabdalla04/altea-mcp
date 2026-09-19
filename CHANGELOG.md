@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.1 — 2026-09-19
+- Quiet booking: window modes `auto` (hidden → visible fallback), `hidden`, `visible`, `headless`; hidden mode
+  hides the Chrome process via System Events right after launch. Measured: headless is refused for bookings
+  but accepted for waitlist joins; an off-screen window is clamped on-screen by macOS; posting guarded
+  actions to `/` from Node is tarpitted.
+- Fetch timeouts on every request (30 s reads, 60 s actions); PII (email, user id) stripped from raw action results.
+
 ## 0.3.0 — 2026-09-19 (MCP hardening after research; see docs/mcp-design.md)
 - Every tool has a title, a "new hire" description (what / when / when-not / cost), strict described inputs,
   an output schema with `structuredContent`, and behaviour annotations (reads `readOnlyHint`, cancel

@@ -49,6 +49,9 @@ KanseiLink *MCP Tool Schema Design Guide 2026*; Salesforce hosted-MCP best pract
 | Real-question evals | partial (manual) | `scripts/mcp-smoke.mjs --live` runs the three canonical questions |
 
 ## Decisions
+- Quiet mutations: `hidden` window mode by default (Chrome hidden via System Events), `visible` fallback on bot
+  refusal. Evidence (2026-09-19): headless refused for confirmBooking, accepted for joinWaitlist; off-screen
+  position clamped by macOS; cross-route POST tarpitted.
 - stdio only: the server runs on Noor's Mac next to the signed-in Chrome profile; no remote transport.
 - `concise` is the default format because Claude Code is the client and reads text well; `detailed` returns the
   full event objects (ids, urls, instructor ids) for chained calls.

@@ -76,8 +76,10 @@ Winnipeg, AVANT Yorkville, LF3 Little Italy, LF3 Online.
 
 ## Speed notes
 - One day ≈ 120 KB, 150–400 ms from Node; 7 days in parallel ≈ 1 s. Parse cost is negligible.
-- Cancel from Node ≈ 0.7–0.9 s. Booking needs a real *headed* page: ≈ 4 s. Headless Chrome passes the
-  edge check but the backend still refuses ("unable to process your booking") — server-side bot verdict.
+- Cancel from Node ≈ 0.7–0.9 s. Booking needs a real page: ≈ 4 s visible, 5–8 s hidden. Headless Chrome passes
+  the edge check and is accepted for `joinWaitlistAction`, but `confirmBookingAction` answers "unable to process
+  your booking" (server-side bot verdict). Posting either guarded action to `/` or `/booking` from Node never
+  gets a response (tarpit) — the in-page `x-is-human` proof is mandatory.
 - Client-side filtering (instructor, type, studio, time, availability) is free; the app's own
   filter UI is purely client-side too.
 - Be gentle with polling for spots (≥ 60 s); every day fetch renders a full page server-side.

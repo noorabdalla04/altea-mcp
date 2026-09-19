@@ -81,7 +81,7 @@ the server was validated against: `docs/mcp-design.md`.
 | 7 days, all 6 groups (`who sara --days 7`) | Node fetch, 12 parallel | 7.6 s |
 | `next hot yin` (3-day chunks, all groups, + detail) | Node fetch | 2.5 s |
 | cancel / waitlist leave | Node `POST /` | 0.7–0.9 s |
-| book / waitlist join | headed Chrome, in-page `POST /booking/<id>` | 3.9–4.0 s |
+| book / waitlist join | hidden Chrome, in-page `POST /booking/<id>` | 5–8 s (visible mode 4 s) |
 Repeated reads within 45 s are served from an in-process cache (`ALTEA_CACHE_TTL_MS`); writes clear it.
 
 ## How it works
@@ -90,8 +90,12 @@ Repeated reads within 45 s are served from an in-process cache (`ALTEA_CACHE_TTL
 * Auth is HttpOnly cookies, exported once from the Chrome profile after `login`. All reads and the
   cancel / waitlist-leave actions run from Node with that jar.
 * `POST /booking/*` is guarded by Vercel BotID (Kasada). Booking and waitlist-join therefore run inside a
-  real page of the persistent profile; **headless Chrome is refused by the backend** ("unable to process
-  your booking"), so those two calls open a visible Chrome window for ~4 s and close it.
+  real page of the persistent profile. Window modes (`ALTEA_WINDOW`): **`auto`** (default) tries `hidden`
+  (Chrome launched, then hidden via macOS System Events before the page loads; a blank window can flash for a
+  fraction of a second) and falls back to `visible` if the backend refuses; `headless` is accepted for
+  waitlist joins but refused for bookings ("unable to process your booking"); an off-screen window position
+  is clamped back on-screen by macOS, so it is not offered. Posting the guarded actions to an unguarded
+  route from Node is tarpitted (no response), so the in-page proof is mandatory.
 * Nothing personal is returned by the tools (no address, phone, card details), and fixtures are scrubbed.
 
 ## Known limits
