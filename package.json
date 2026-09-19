@@ -10,7 +10,7 @@
   "scripts": {
     "mcp": "node bin/mcp-server.mjs",
     "login": "node bin/altea.mjs login",
-    "test": "node --test test/",
+    "test": "node --test test/*.test.mjs",
     "smoke": "node scripts/mcp-smoke.mjs",
     "install-claude": "bash scripts/install.sh"
   },

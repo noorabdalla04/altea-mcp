@@ -82,7 +82,9 @@ export function eventsFromRows(rows) {
     const m = JSON.stringify(tree[1]).match(/"eventsPromise":"\$@([0-9a-f]+)"/);
     if (m && rows[m[1]] && Array.isArray(rows[m[1]].json)) return rows[m[1]].json;
   }
-  return [];
+  // Nested somewhere inside a component prop (future builds): deep search.
+  const nested = deepFindInRows(rows, (j) => Array.isArray(j) && j.length > 0 && isEvent(j[0]));
+  return nested || [];
 }
 
 /** Rows that are plain objects and contain all of `keys`. */
