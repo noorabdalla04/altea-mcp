@@ -24,7 +24,8 @@ if ! curl -fsS -m 10 "http://127.0.0.1:$PORT/healthz" >/dev/null 2>&1; then
 fi
 
 # 2. tailscale
-[ -x "${TS%% *}" ] || { log "tailscale CLI not found at $TS"; exit 0; }
+state=""
+if [ -x "${TS%% *}" ]; then
 state="$($TS status --json 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin).get("BackendState",""))' 2>/dev/null)"
 if [ "$state" != "Running" ]; then
   log "tailscale: state '$state'; relaunching ($TS_RESTART)"
@@ -34,8 +35,20 @@ if [ "$state" != "Running" ]; then
   [ "$state" = "Running" ] && log "tailscale: running" || log "tailscale: STILL '$state' (a re-login in the Tailscale app may be needed)"
   fixed=1
 fi
+fi
 
-# 3. funnel + public DNS (only when a public URL is configured)
+# 3a. a tunnel agent (Cloudflare etc.) in front instead of a Funnel: keep it alive by checking the public URL from here
+if [ -n "${ALTEA_TUNNEL_LABEL:-}" ] && [ -n "$PUBLIC_URL" ]; then
+  if ! curl -fsS -m 15 -A "altea-watchdog" "$PUBLIC_URL/healthz" >/dev/null 2>&1; then
+    log "tunnel: $PUBLIC_URL/healthz failed; restarting $ALTEA_TUNNEL_LABEL"
+    launchctl kickstart -k "gui/$(id -u)/$ALTEA_TUNNEL_LABEL" 2>&1 | sed 's/^/  /'
+    sleep 20; curl -fsS -m 15 "$PUBLIC_URL/healthz" >/dev/null 2>&1 && log "tunnel: back" || log "tunnel: STILL DOWN"
+    fixed=1
+  fi
+fi
+
+# 3b. funnel + public DNS (only for a Tailscale name)
+case "$PUBLIC_URL" in *.ts.net*) ;; *) PUBLIC_URL="";; esac
 if [ -n "$PUBLIC_URL" ] && [ "$state" = "Running" ]; then
   host="$(printf '%s' "$PUBLIC_URL" | sed -E 's#^https?://([^:/]+).*#\1#')"
   hport="$(printf '%s' "$PUBLIC_URL" | sed -E 's#^https?://[^:/]+:?([0-9]*).*#\1#')"; hport="${hport:-443}"

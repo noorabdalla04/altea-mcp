@@ -6,6 +6,7 @@
 #   bash scripts/remote-install.sh --public-url https://<hostname>.<tailnet>.ts.net [--funnel] \
 #        [--port 8788] [--member "Your Name"] [--window visible] [--community "Altea Toronto"] \
 #        [--tailscale-socket ~/.altea/tailscale/tailscaled.sock]   # dedicated node from remote-tailscale-node.sh
+#        [--tunnel-label com.altea.cloudflared]                     # Cloudflare Tunnel from remote-cloudflare-tunnel.sh
 #
 # claude.ai's connector client only connects to port 443. If this Mac's own MagicDNS name already serves
 # something on 443, create a dedicated node first (scripts/remote-tailscale-node.sh) and pass its socket here.
@@ -15,9 +16,10 @@
 # and add <public-url>/mcp as a custom connector in claude.ai (you will be asked for the passphrase printed below).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-PORT=8788; PUBLIC_URL=""; MEMBER=""; COMMUNITY=""; FUNNEL=0; WINDOW="visible"; LABEL="com.altea.mcp-http"; TS_SOCKET=""
+PORT=8788; PUBLIC_URL=""; MEMBER=""; COMMUNITY=""; FUNNEL=0; WINDOW="visible"; LABEL="com.altea.mcp-http"; TS_SOCKET=""; TUNNEL_LABEL=""
 while [ $# -gt 0 ]; do case "$1" in
   --tailscale-socket) TS_SOCKET="$2"; shift 2;;
+  --tunnel-label) TUNNEL_LABEL="$2"; shift 2;;   # launchd label of a Cloudflare (or other) tunnel agent the watchdog should keep alive
   --public-url) PUBLIC_URL="$2"; shift 2;;
   --port) PORT="$2"; shift 2;;
   --member) MEMBER="$2"; shift 2;;
@@ -105,6 +107,7 @@ cat > "$WD_PLIST" <<PL
     <key>ALTEA_HTTP_PORT</key><string>$PORT</string>
     <key>ALTEA_TS_CMD</key><string>$TS_CMD</string>
     <key>ALTEA_TS_RESTART</key><string>$TS_RESTART</string>
+    <key>ALTEA_TUNNEL_LABEL</key><string>$TUNNEL_LABEL</string>
   </dict>
   <key>StartInterval</key><integer>300</integer>
   <key>RunAtLoad</key><true/>
