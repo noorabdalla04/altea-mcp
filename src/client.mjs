@@ -702,7 +702,9 @@ export class Altea {
     const cookies = this.http?.cookies || [];
     let signedIn = false, userId = null, err = null;
     try { const t = await this.http.rsc('/booking'); signedIn = true; const m = t.match(/"currentUser":\{[^}]*?"id":"([^"]+)"/); userId = m ? m[1] : null; } catch (e) { err = e.message; }
-    const expiries = cookies.filter((c) => c.name !== 'tz' && c.expires > 0).map((c) => c.expires * 1000);
+    // the sign-in cookie decides when the session ends; short-lived helpers that share the jar (Stripe, tz) do not
+    const authCookies = cookies.filter((c) => /auth|session/i.test(c.name) && c.expires > 0);
+    const expiries = (authCookies.length ? authCookies : cookies.filter((c) => c.name !== 'tz' && c.expires > 0)).map((c) => c.expires * 1000);
     const sessionExpiresAt = expiries.length ? localParts(Math.min(...expiries)).iso : null;
     let actionsInfo = null;
     try { const a = JSON.parse(await readFile(ACTIONS_FILE, 'utf8')); actionsInfo = { key: a.key, discoveredAt: a.discoveredAt, names: Object.keys(a.actions) }; } catch { /* none */ }

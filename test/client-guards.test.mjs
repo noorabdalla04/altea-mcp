@@ -106,3 +106,19 @@ test('group aliases resolve to calendar groups', async () => {
   assert.equal(await c.resolveGroup('com_x', undefined), 'Boutique Fitness');
   await assert.rejects(c.resolveGroup('com_x', 'skating'), (e) => e.code === 'BAD_INPUT');
 });
+
+test('status: the session expiry follows the sign-in cookie, not short-lived helper cookies', async () => {
+  const { c } = client({ rsc: async () => '"currentUser":{"id":"usr_me","name":"x"}' });
+  const now = Date.now() / 1000, day = 86400;
+  c.http.cookies = [
+    { name: '__stripe_sid', domain: '.myaltea.app', expires: now + 1800 },
+    { name: '__Secure-firebase.auth.v2', domain: '.myaltea.app', expires: now + 12 * day, httpOnly: true },
+    { name: 'tz', domain: 'myaltea.app', expires: now + 365 * day },
+  ];
+  const s = await c.status();
+  assert.equal(s.signedIn, true); assert.equal(s.userId, 'usr_me');
+  assert.ok(Math.abs(Date.parse(s.sessionExpiresAt) - (now + 12 * day) * 1000) < 120_000, `expiry follows the auth cookie: ${s.sessionExpiresAt}`);
+  c.http.cookies = [{ name: 'other', domain: '.myaltea.app', expires: now + 2 * day }];
+  const f = await c.status();
+  assert.ok(Math.abs(Date.parse(f.sessionExpiresAt) - (now + 2 * day) * 1000) < 120_000, 'falls back to the earliest cookie when no auth cookie is present');
+});
