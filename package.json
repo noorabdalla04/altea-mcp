@@ -1,6 +1,6 @@
 {
   "name": "altea-mcp",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "private": true,
   "type": "module",
   "description": "Personal MCP server + CLI for the Altea Active (myaltea.app) booking app: schedules, spots, instructors, bookings, cancellations, waitlists.",
@@ -17,10 +17,13 @@
     "test": "node --test test/*.test.mjs",
     "smoke": "node scripts/mcp-smoke.mjs",
     "eval": "node scripts/eval.mjs",
-    "install-claude": "bash scripts/install.sh"
+    "install-claude": "bash scripts/install.sh",
+    "serve": "node bin/mcp-http.mjs",
+    "remote-install": "bash scripts/remote-install.sh"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.0",
+    "express": "^5.1.0",
     "playwright-core": "^1.59.1",
     "zod": "^3.24.0"
   },

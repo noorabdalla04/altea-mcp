@@ -8,7 +8,7 @@
 // Slow path (book, waitlist-join on the event page): a real page in the
 // persistent profile, `page.evaluate(fetch)` so the SDK wrapper adds the proof.
 
-import { readFile, writeFile, mkdir } from 'node:fs/promises';
+import { readFile, writeFile, mkdir, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
@@ -35,6 +35,13 @@ export class NotSignedIn extends Error {
 export async function loadCookies() {
   try { return JSON.parse(await readFile(COOKIES_FILE, 'utf8')); } catch { return []; }
 }
+
+/** Modification time of the jar file (0 when absent); lets long-running processes notice a new login or a pushed jar. */
+export async function cookiesMtime() { try { return (await stat(COOKIES_FILE)).mtimeMs; } catch { return 0; } }
+
+const inAlteaDomain = (c) => /(^|\.)myaltea\.app$/.test((c.domain || '').replace(/^\./, ''));
+/** Jar entry → Playwright cookie. */
+export const toBrowserCookie = (c) => ({ name: c.name, value: c.value, domain: c.domain, path: c.path || '/', expires: c.expires ?? -1, httpOnly: !!c.httpOnly, secure: !!c.secure, sameSite: c.sameSite || 'Lax' });
 
 export async function saveCookies(cookies) {
   await mkdir(HOME, { recursive: true });
@@ -92,12 +99,20 @@ function absorbSetCookies(jar, res) {
 
 export class HttpSession {
   constructor(cookies, { readTimeoutMs = Number(process.env.ALTEA_READ_TIMEOUT_MS ?? 30_000), actionTimeoutMs = Number(process.env.ALTEA_ACTION_TIMEOUT_MS ?? 60_000) } = {}) {
-    this.cookies = cookies; this.dirty = false; this.readTimeoutMs = readTimeoutMs; this.actionTimeoutMs = actionTimeoutMs;
+    this.cookies = cookies; this.dirty = false; this.readTimeoutMs = readTimeoutMs; this.actionTimeoutMs = actionTimeoutMs; this.mtime = 0;
   }
 
-  static async load() { return new HttpSession(await loadCookies()); }
+  static async load() { const s = new HttpSession(await loadCookies()); s.mtime = await cookiesMtime(); return s; }
 
-  async persist() { if (this.dirty) { await saveCookies(this.cookies); this.dirty = false; } }
+  async persist() { if (this.dirty) { await saveCookies(this.cookies); this.dirty = false; this.mtime = await cookiesMtime(); } }
+
+  /** Reload the jar when another process replaced cookies.json (a new `login`, or `altea remote push` from the login Mac). */
+  async refresh() {
+    const m = await cookiesMtime();
+    if (m <= this.mtime) return false;
+    this.cookies = await loadCookies(); this.mtime = m; this.dirty = false;
+    return true;
+  }
 
   headers(extra = {}) {
     return { 'user-agent': UA, cookie: cookieHeader(this.cookies), ...extra };
@@ -105,6 +120,7 @@ export class HttpSession {
 
   /** GET an RSC payload for a path. Throws NotSignedIn when the app served the auth shell instead. */
   async rsc(path) {
+    await this.refresh();
     const res = await fetch(ORIGIN + path, { headers: this.headers({ rsc: '1', accept: '*/*' }), redirect: 'manual', signal: AbortSignal.timeout(this.readTimeoutMs) });
     if (absorbSetCookies(this.cookies, res)) this.dirty = true;
     const text = await res.text();
@@ -116,6 +132,7 @@ export class HttpSession {
 
   /** GET page HTML (for chunk discovery). */
   async html(url) {
+    await this.refresh();
     const res = await fetch(url, { headers: this.headers({ accept: 'text/html' }), signal: AbortSignal.timeout(this.readTimeoutMs) });
     return res.text();
   }
@@ -125,6 +142,7 @@ export class HttpSession {
    * i.e. not guarded by the bot challenge). Returns raw x-component text + headers.
    */
   async action(pagePath, actionId, args) {
+    await this.refresh();
     const res = await fetch(ORIGIN + pagePath, {
       method: 'POST',
       headers: this.headers({ 'next-action': actionId, accept: 'text/x-component', 'content-type': 'text/plain;charset=UTF-8' }),
@@ -187,6 +205,7 @@ export async function openBrowser({ headless = true, mode, log = () => {} } = {}
   try {
     const context = await chromium.launchPersistentContext(PROFILE_DIR, common);
     log(`chrome: persistent profile (${mode})`);
+    await seedContextFromJar(context, log);
     if (mode === 'hidden') { const t0 = Date.now(); await hideChromeWindows(log); log(`chrome: window visible for ~${Date.now() - t0} ms before hide`); }
     return { context, persistent: true, close: () => context.close() };
   } catch (e) {
@@ -195,9 +214,24 @@ export async function openBrowser({ headless = true, mode, log = () => {} } = {}
     const browser = await chromium.launch({ channel: 'chrome', headless, args: common.args, ignoreDefaultArgs: common.ignoreDefaultArgs });
     const context = await browser.newContext({ viewport: common.viewport, locale: common.locale, timezoneId: getTZ(), userAgent: undefined });
     const cookies = await loadCookies();
-    if (cookies.length) await context.addCookies(cookies.map((c) => ({ name: c.name, value: c.value, domain: c.domain, path: c.path || '/', expires: c.expires ?? -1, httpOnly: !!c.httpOnly, secure: !!c.secure, sameSite: c.sameSite || 'Lax' })));
+    if (cookies.length) await context.addCookies(cookies.filter(inAlteaDomain).map(toBrowserCookie));
     return { context, persistent: false, close: () => browser.close() };
   }
+}
+
+/**
+ * Make the browser context carry the jar's cookies. The jar is the source of truth: the fast path refreshes it on
+ * rotation, and on a serving Mac it arrives from the Mac where `login` ran (the profile there never signed in).
+ */
+export async function seedContextFromJar(context, log = () => {}) {
+  const jar = (await loadCookies()).filter((c) => c.name !== 'tz' && inAlteaDomain(c) && !(c.expires > 0 && c.expires < Date.now() / 1000));
+  if (!jar.length) return 0;
+  const have = await context.cookies([ORIGIN, 'https://auth.myaltea.app']).catch(() => []);
+  const missing = jar.filter((c) => !have.some((h) => h.name === c.name && h.value === c.value));
+  if (!missing.length) return 0;
+  await context.addCookies(missing.map(toBrowserCookie));
+  log(`chrome: seeded ${missing.length} cookie(s) from the jar`);
+  return missing.length;
 }
 
 /**

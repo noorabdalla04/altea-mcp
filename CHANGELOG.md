@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.5.0 — 2026-09-21
+- Remote transport: `bin/mcp-http.mjs` serves the same tools over Streamable HTTP (stateless, one shared client,
+  one mutex) behind a single-user OAuth 2.1 server (`src/oauth.mjs`: dynamic registration with a redirect
+  allow-list, PKCE, passphrase sign-in page with lock-out, hashed file-backed tokens, refresh rotation, revocation).
+  Works as a claude.ai custom connector (and so in the Claude phone apps), with Claude Code `--transport http`,
+  and with the MCP Inspector.
+- `altea remote passphrase | push | status | revoke`; `scripts/remote-install.sh` (launchd agent + Tailscale Funnel
+  on the serving Mac) and `scripts/install-push-agent.sh` (auto-push the session after each login).
+- The cookie jar is hot-reloaded when `cookies.json` changes (a new login, or a push from another Mac) and the
+  Chrome profile is seeded from the jar, so a Mac that never signed in can still book.
+- `createAlteaServer` accepts a shared mutex/client for multi-request hosts.
+
 ## 0.4.1 — 2026-09-19
 - Second-pass review fixes: time-zone-independent date parsing (CI was red on UTC runners); the club's own
   time zone is used for rendering and the `tz` cookie (`ALTEA_TZ` overrides); install script works on macOS

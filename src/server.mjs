@@ -65,13 +65,13 @@ const actionsOut = { status: Status, summary: z.string(), actions: z.record(z.st
  * @param {object} o
  * @param {() => object} [o.makeClient]  factory for the Altea client (tests inject a stub)
  */
-export function createAlteaServer({ makeClient, log = (m) => process.stderr.write(`[altea-mcp] ${m}\n`), readTimeoutMs = 60_000, actionTimeoutMs = 150_000, idleMs = 10 * 60_000 } = {}) {
+export function createAlteaServer({ makeClient, log = (m) => process.stderr.write(`[altea-mcp] ${m}\n`), readTimeoutMs = 60_000, actionTimeoutMs = 150_000, idleMs = 10 * 60_000, mutex: sharedMutex, shared = false } = {}) {
   const factory = makeClient || (() => new Altea({ log }));
   let client = null; let lastUse = Date.now();
-  const mutex = new Mutex();
+  const mutex = sharedMutex || new Mutex(); // shared: the HTTP transport hands every request the same mutex and client
   async function getClient() { if (!client) { client = factory(); if (client.init) await client.init(); } lastUse = Date.now(); return client; }
-  const idle = setInterval(async () => { if (client?.browser && Date.now() - lastUse > idleMs) { log('idle: closing chrome'); await client.close().catch(() => {}); client = null; } }, 60_000);
-  idle.unref();
+  const idle = shared ? null : setInterval(async () => { if (client?.browser && Date.now() - lastUse > idleMs) { log('idle: closing chrome'); await client.close().catch(() => {}); client = null; } }, 60_000);
+  idle?.unref();
 
   const ok = ({ text, structured }) => ({ content: [{ type: 'text', text }], structuredContent: structured });
   const fail = (e) => { const err = toAlteaError(e); return { isError: true, content: [{ type: 'text', text: `ERROR[${err.code}]: ${err.message}\nRetry safe: ${err.retryable ? 'yes' : 'no'}. Next: ${err.next}${err.details ? `\nDetails: ${JSON.stringify(err.details)}` : ''}` }] }; };
@@ -83,7 +83,7 @@ export function createAlteaServer({ makeClient, log = (m) => process.stderr.writ
       return ok(await withTimeout(exclusive ? mutex.run(work) : work(), timeout, 'tool call'));
     } catch (e) {
       log(`error: ${e?.code || ''} ${e?.message || e}`);
-      if (e?.name === 'NotSignedIn' && client) { const c = client; client = null; await c.close().catch(() => {}); } // re-read the jar next time
+      if (e?.name === 'NotSignedIn' && client) { const c = client; client = null; if (!shared) await c.close().catch(() => {}); } // re-read the jar next time
       return fail(e);
     }
   };
@@ -188,6 +188,6 @@ export function createAlteaServer({ makeClient, log = (m) => process.stderr.writ
   server.registerPrompt('altea-book-request', { title: 'Handle a booking request', description: 'Turn a natural-language booking request into a safe, confirmed booking.', argsSchema: { request: z.string().describe('What the member asked for, e.g. "book me into the 9 am Main Stage Ride tomorrow".') } },
     ({ request }) => ({ messages: [{ role: 'user', content: { type: 'text', text: `Booking request: "${request}". Find the event with altea_find or altea_next, then altea_event to check the booking window, conflicts and waivers. Show me the exact session (time, studio, instructor, spots, free-cancel deadline) and wait for my yes. Only then call altea_book, and report the booking id and the cancel-by time. If it is full, offer altea_waitlist join instead.` } }] }));
 
-  const shutdown = async () => { clearInterval(idle); if (client) await client.close().catch(() => {}); client = null; };
+  const shutdown = async () => { if (idle) clearInterval(idle); if (client && !shared) await client.close().catch(() => {}); client = null; };
   return { server, shutdown, getClient };
 }

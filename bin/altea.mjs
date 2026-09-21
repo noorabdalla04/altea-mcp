@@ -13,15 +13,19 @@
 //   altea book <evt_id> [--force] [--window MODE]        bot-guarded route: hidden Chrome by default
 //   altea cancel <bkg_id|evt_id> [--force]               refuses late cancels (8 h rule) unless --force
 //   altea waitlist join|leave <evt_id>
+//   altea remote passphrase [--rotate]           set the passphrase for the remote server's sign-in page (prints it once)
+//   altea remote push <user@host> [--dir ~/.altea] copy the signed-in session to the Mac that serves it (run after login)
+//   altea remote status [url]                     health of a remote server + local OAuth clients/tokens
+//   altea remote revoke                           sign every connected client out of the remote server
 //
 // date: YYYY-MM-DD | today | tomorrow | mon…sun | next mon | +N.   time: 15:00 | 3pm | 3:30pm
 // --group all searches every group of the club (Boutique Fitness, Pickleball, Aquatics, …).
 // --community toronto selects another club.  --verbose logs timings.  ALTEA_HEADLESS=1 forces headless.
 
 import { Altea, RULES, ALL_GROUPS } from '../src/client.mjs';
-import { login, NotSignedIn } from '../src/session.mjs';
+import { login, NotSignedIn, COOKIES_FILE, ACTIONS_FILE, META_FILE } from '../src/session.mjs';
 
-const BOOL = new Set(['json', 'available', 'mine', 'force', 'refresh', 'verbose', 'headed', 'desc', 'all', 'include-full', 'help', 'nocache']);
+const BOOL = new Set(['json', 'available', 'mine', 'force', 'refresh', 'verbose', 'headed', 'desc', 'all', 'include-full', 'help', 'nocache', 'rotate']);
 const argv = process.argv.slice(2);
 const flags = {}; const pos = [];
 for (let i = 0; i < argv.length; i++) {
@@ -88,9 +92,48 @@ async function usage() { const { readFile } = await import('node:fs/promises'); 
 
 const filterFlags = () => ({ instructor: flags.instructor, type: flags.type, studio: flags.studio, query: flags.query, availableOnly: !!flags.available, mine: !!flags.mine, after: flags.after, before: flags.before, at: flags.at, near: flags.near, timeOfDay: flags.tod });
 
+async function remote(sub, args) {
+  const { FileOAuthProvider } = await import('../src/oauth.mjs');
+  const provider = new FileOAuthProvider();
+  switch (sub) {
+    case 'passphrase': {
+      if (provider.hasPassphrase() && !flags.rotate) return out('A passphrase is already set. Use `altea remote passphrase --rotate` to replace it (connected clients keep working).');
+      const pass = FileOAuthProvider.generatePassphrase();
+      provider.setPassphrase(pass);
+      return out(`Remote sign-in passphrase: ${pass}\nKeep it in your password manager; each client (claude.ai, Claude Code, …) asks for it once when you connect.`);
+    }
+    case 'revoke': return out(`Revoked ${provider.revokeAll()} token(s); every client must sign in again.`);
+    case 'status': {
+      const url = args[0] || process.env.ALTEA_PUBLIC_URL;
+      const local = { passphraseSet: provider.hasPassphrase(), clients: provider.clients(), tokens: provider.tokenCounts() };
+      if (!url) return out({ local, note: 'pass the public URL (or set ALTEA_PUBLIC_URL) to check the server' });
+      let health = null; try { const r = await fetch(new URL('/healthz', url), { signal: AbortSignal.timeout(10_000) }); health = { status: r.status, ...(await r.json()) }; } catch (e) { health = { error: e.message }; }
+      return out({ url, health, local });
+    }
+    case 'push': {
+      const target = args[0]; if (!target) throw new Error('remote push <user@host>');
+      const dir = flags.dir || '~/.altea';
+      const { execFile } = await import('node:child_process'); const { promisify } = await import('node:util'); const { existsSync } = await import('node:fs');
+      const run = promisify(execFile);
+      const files = [COOKIES_FILE, ACTIONS_FILE, META_FILE].filter((f) => existsSync(f));
+      if (!files.includes(COOKIES_FILE)) throw new Error(`no ${COOKIES_FILE}; run \`altea login\` first`);
+      const ssh = ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=15'];
+      await run('ssh', [...ssh, target, `mkdir -p ${dir} && chmod 700 ${dir}`]);
+      let how = 'rsync';
+      try { await run('rsync', ['-ut', '-e', `ssh ${ssh.join(' ')}`, ...files, `${target}:${dir}/`]); } // -u: never overwrite a newer jar on the server
+      catch { how = 'scp'; await run('scp', ['-p', ...ssh, ...files, `${target}:${dir}/`]); }
+      const jar = JSON.parse(await (await import('node:fs/promises')).readFile(COOKIES_FILE, 'utf8'));
+      const exp = jar.filter((c) => c.name !== 'tz' && c.expires > 0).map((c) => c.expires * 1000);
+      return out(`Pushed ${files.map((f) => f.split('/').pop()).join(', ')} to ${target}:${dir} via ${how}${exp.length ? ` (session cookie expires ${new Date(Math.min(...exp)).toISOString().slice(0, 10)})` : ''}. The server picks it up on its next request.`);
+    }
+    default: await usage(); process.exitCode = 1;
+  }
+}
+
 async function main() {
   if (!cmd || flags.help) return usage();
   if (cmd === 'login') { await login({ log: (m) => process.stderr.write(m + '\n') }); return; }
+  if (cmd === 'remote') return remote(rest[0], rest.slice(1));
   if (cmd === 'rules') return out({ ...RULES, note: 'cancel ≥ 8 h before start or pay the late fee; booking opens 48 h before start' });
 
   const client = new Altea({ log, windowMode: flags.window || (flags.headed ? 'visible' : undefined) });

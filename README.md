@@ -39,12 +39,54 @@ bash scripts/install.sh --member "Your Name"            # add --community "Altea
     "env": { "ALTEA_MEMBER_NAME": "Your Name" } } } }
 ```
 **Any other MCP client**: stdio transport, command `node bin/mcp-server.mjs`. Use an absolute path to `node`
-(`which node`) because GUI apps don't inherit your shell PATH.
+(`which node`) because GUI apps don't inherit your shell PATH. For phones and other computers see
+[Use it from anywhere](#use-it-from-anywhere-phone-watch-any-laptop).
 
 Times are shown in your club's local time zone (auto-detected from the app; `ALTEA_TZ` overrides).
 
 Then ask naturally: "what's on at Altea tomorrow evening?", "next Hot Yin?", "book me into the 9 am Main Stage
 Ride", "cancel my Sunday class". The assistant will confirm before it books or cancels.
+
+## Use it from anywhere (phone, watch, any laptop)
+The stdio server above only serves the Mac it runs on. To reach the same tools from the Claude iOS/Android apps,
+claude.ai on any computer, or Claude Code elsewhere, run the **remote** server on a Mac that stays on (a Mac
+mini, an old laptop) and add it to claude.ai as a custom connector. Anthropic's servers talk to it over HTTPS, so
+it needs a public URL; [Tailscale Funnel](https://tailscale.com/kb/1223/funnel) gives you one for free (no domain,
+valid certificate, only the port you choose is exposed). Cloudflare Tunnel or any TLS reverse proxy works too.
+
+What you get: the full tool set over Streamable HTTP at `<public-url>/mcp`, behind OAuth 2.1 (dynamic client
+registration, PKCE) with a single passphrase you type once per client. Tokens are stored hashed under
+`~/.altea/oauth`; access tokens last 7 days and refresh silently for 180 days.
+
+**On the serving Mac** (Tailscale installed and signed in, [Funnel enabled](https://tailscale.com/kb/1223/funnel#setup)):
+```bash
+git clone https://github.com/noorabdalla04/altea-mcp.git && cd altea-mcp
+bash scripts/remote-install.sh --public-url https://<machine>.<tailnet>.ts.net:8443 --funnel --member "Your Name"
+```
+This installs a launchd agent (`com.altea.mcp-http`, restarts on failure and at login), starts the server on
+`127.0.0.1:8788`, turns the Funnel on for that one port, and prints the **passphrase**. Bookings open a real Chrome
+window on that Mac (`ALTEA_WINDOW=visible`), which nobody is looking at anyway.
+
+**On the Mac where you sign in** (the serving Mac never sees your Altea password):
+```bash
+node bin/altea.mjs login                                   # once, and again when the session expires
+node bin/altea.mjs remote push user@serving-mac            # copies ~/.altea/{cookies,actions,meta}.json over ssh
+bash scripts/install-push-agent.sh user@serving-mac        # optional: do the push automatically after every login
+```
+The running server picks up a pushed session on its next request. In practice the session renews itself while
+the server is used (the app extends the cookie on every request), so re-logins are rare.
+
+**Connect a client** (once per client; the passphrase page appears in your browser):
+* claude.ai → Settings → Connectors → *Add custom connector* → URL `https://<machine>.<tailnet>.ts.net:8443/mcp`.
+  The connector then shows up in the Claude apps on your phone and in Claude Desktop automatically (connectors are
+  added on the web and synced; the free plan allows one custom connector).
+* Claude Code: `claude mcp add --transport http altea https://…:8443/mcp`, then `/mcp` to sign in.
+* Any other MCP client that speaks Streamable HTTP + OAuth (MCP Inspector, Cursor with an allowed redirect host).
+
+Operations: `node bin/altea.mjs remote status <url>` (health, registered clients, live tokens),
+`remote revoke` (sign every client out), `remote passphrase --rotate`. Logs: `~/.altea/logs/http.log`.
+Only claude.ai / claude.com and loopback redirect URIs are accepted at registration; add hosts with
+`ALTEA_OAUTH_REDIRECT_HOSTS=host1,host2`. Five wrong passphrases lock the sign-in page for 15 minutes.
 
 ## Membership rules the tool enforces
 | Rule | Behaviour | Override |
@@ -106,6 +148,11 @@ server was validated against: `docs/mcp-design.md`; question → tool cookbook: 
 | `ALTEA_HOME` | `~/.altea` | where the profile, cookies and caches live |
 | `ALTEA_CACHE_TTL_MS` / `ALTEA_CONCURRENCY` | 45000 / 8 | read cache and parallel fetches |
 | `ALTEA_READ_TIMEOUT_MS` / `ALTEA_ACTION_TIMEOUT_MS` / `ALTEA_LAUNCH_TIMEOUT_MS` | 30000 / 60000 / 60000 | request and Chrome launch budgets |
+| `ALTEA_PUBLIC_URL` | `http://localhost:<port>` | remote server: the public origin clients use (OAuth issuer + resource) |
+| `ALTEA_HTTP_PORT` / `ALTEA_HTTP_HOST` | 8788 / 127.0.0.1 | remote server bind address (keep it on loopback behind the tunnel) |
+| `ALTEA_OAUTH_DIR` / `ALTEA_OAUTH_REDIRECT_HOSTS` | `~/.altea/oauth` / claude.ai,claude.com | token store; extra hosts allowed as OAuth redirect targets |
+| `ALTEA_ACCESS_TOKEN_TTL_S` / `ALTEA_REFRESH_TOKEN_TTL_S` | 604800 / 15552000 | token lifetimes (7 days / 180 days) |
+| `ALTEA_TRUST_PROXY` | `1` | set `0` when the remote server is not behind a reverse proxy |
 
 ## How it works
 * The app is a Next.js site with no public API: reads are React Server Component payloads (parsed by

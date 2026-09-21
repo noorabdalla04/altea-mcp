@@ -7,7 +7,7 @@
 //                             hidden window by default, visible fallback; headless is refused for bookings).
 
 import { readFile, writeFile } from 'node:fs/promises';
-import { HttpSession, ORIGIN, ACTIONS_FILE, META_FILE, getTZ, openBrowser, exportCookies, inPageAction, loadCookies } from './session.mjs';
+import { HttpSession, ORIGIN, ACTIONS_FILE, META_FILE, getTZ, openBrowser, exportCookies, inPageAction } from './session.mjs';
 import { parseRSC, eventsFromRows, deepFindInRows, parseActionResponse } from './rsc.mjs';
 import { discoverActions } from './discover.mjs';
 import { AlteaError } from './errors.mjs';
@@ -585,7 +585,7 @@ export class Altea {
 
   async #closeBrowser() {
     if (!this.browser) return;
-    try { await exportCookies(this.browser.context); if (this.http) { this.http.cookies = await loadCookies(); this.http.dirty = false; } } catch { /* ignore */ }
+    try { await exportCookies(this.browser.context); if (this.http) await this.http.refresh(); } catch { /* ignore */ }
     await this.browser.close().catch(() => {});
     this.browser = null; this.page = null;
   }
