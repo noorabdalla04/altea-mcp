@@ -29,5 +29,6 @@ cat > "$PLIST" <<PL
 PL
 UID_N="$(id -u)"
 launchctl bootout "gui/$UID_N/$LABEL" 2>/dev/null || true
-launchctl bootstrap "gui/$UID_N" "$PLIST"
+for i in 1 2 3 4 5 6 7 8 9 10; do launchctl print "gui/$UID_N/$LABEL" >/dev/null 2>&1 || break; sleep 1; done
+launchctl bootstrap "gui/$UID_N" "$PLIST" 2>/dev/null || launchctl kickstart -k "gui/$UID_N/$LABEL"
 echo "Installed $LABEL: pushes $ALTEA_HOME/{cookies,actions,meta}.json to $TARGET on change and every 6 h (log: $ALTEA_HOME/logs/push.log)."

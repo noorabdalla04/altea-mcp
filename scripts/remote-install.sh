@@ -67,8 +67,13 @@ PL
 } > "$PLIST"
 
 UID_N="$(id -u)"
-launchctl bootout "gui/$UID_N/$LABEL" 2>/dev/null || true
-launchctl bootstrap "gui/$UID_N" "$PLIST"
+# (re)load a launchd agent: bootout is asynchronous, so wait until the job is gone before bootstrapping again
+load_agent() { # label plist
+  launchctl bootout "gui/$UID_N/$1" 2>/dev/null || true
+  for i in 1 2 3 4 5 6 7 8 9 10; do launchctl print "gui/$UID_N/$1" >/dev/null 2>&1 || break; sleep 1; done
+  launchctl bootstrap "gui/$UID_N" "$2" 2>/dev/null || launchctl kickstart -k "gui/$UID_N/$1"
+}
+load_agent "$LABEL" "$PLIST"
 
 # watchdog: every 5 minutes, restart the server / relaunch Tailscale / re-enable the Funnel if any of them dropped
 WD_LABEL="com.altea.watchdog"; WD_PLIST="$HOME/Library/LaunchAgents/$WD_LABEL.plist"
@@ -91,8 +96,7 @@ cat > "$WD_PLIST" <<PL
   <key>StandardErrorPath</key><string>$ALTEA_HOME/logs/watchdog.log</string>
 </dict></plist>
 PL
-launchctl bootout "gui/$UID_N/$WD_LABEL" 2>/dev/null || true
-launchctl bootstrap "gui/$UID_N" "$WD_PLIST"
+load_agent "$WD_LABEL" "$WD_PLIST"
 for i in 1 2 3 4 5 6 7 8 9 10; do sleep 1; curl -fsS "http://127.0.0.1:$PORT/healthz" >/dev/null 2>&1 && break; done
 curl -fsS "http://127.0.0.1:$PORT/healthz" || { echo "server did not come up; see $ALTEA_HOME/logs/http.log"; exit 1; }
 echo
