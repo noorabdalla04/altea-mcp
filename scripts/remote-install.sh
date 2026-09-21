@@ -108,6 +108,7 @@ cat > "$WD_PLIST" <<PL
     <key>ALTEA_TS_CMD</key><string>$TS_CMD</string>
     <key>ALTEA_TS_RESTART</key><string>$TS_RESTART</string>
     <key>ALTEA_TUNNEL_LABEL</key><string>$TUNNEL_LABEL</string>
+    <key>ALTEA_TUNNEL_METRICS_PORT</key><string>${ALTEA_TUNNEL_METRICS_PORT:-20241}</string>
   </dict>
   <key>StartInterval</key><integer>300</integer>
   <key>RunAtLoad</key><true/>

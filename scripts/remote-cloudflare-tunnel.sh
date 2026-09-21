@@ -8,7 +8,7 @@
 #
 # Then: bash scripts/remote-install.sh --public-url https://altea.example.com --tunnel-label com.altea.cloudflared ...
 set -euo pipefail
-HOSTNAME_CF=""; PORT=8788; NAME="altea"; LABEL="com.altea.cloudflared"
+HOSTNAME_CF=""; PORT=8788; NAME="altea"; LABEL="com.altea.cloudflared"; METRICS_PORT="${ALTEA_TUNNEL_METRICS_PORT:-20241}"
 while [ $# -gt 0 ]; do case "$1" in
   --hostname) HOSTNAME_CF="$2"; shift 2;; --port) PORT="$2"; shift 2;; --name) NAME="$2"; shift 2;;
   *) echo "unknown option $1"; exit 1;; esac; done
@@ -45,7 +45,7 @@ cat > "$PLIST" <<PL
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
   <key>Label</key><string>$LABEL</string>
-  <key>ProgramArguments</key><array><string>$CF</string><string>tunnel</string><string>--config</string><string>$CONF</string><string>run</string><string>$NAME</string></array>
+  <key>ProgramArguments</key><array><string>$CF</string><string>tunnel</string><string>--config</string><string>$CONF</string><string>--metrics</string><string>127.0.0.1:$METRICS_PORT</string><string>run</string><string>$NAME</string></array>
   <key>EnvironmentVariables</key><dict><key>HOME</key><string>$HOME</string></dict>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
@@ -59,4 +59,5 @@ for i in $(seq 1 10); do launchctl print "gui/$UID_N/$LABEL" >/dev/null 2>&1 || 
 launchctl bootstrap "gui/$UID_N" "$PLIST" 2>/dev/null || launchctl kickstart -k "gui/$UID_N/$LABEL"
 for i in $(seq 1 30); do sleep 2; curl -fsS -m 10 "https://$HOSTNAME_CF/healthz" >/dev/null 2>&1 && break; done
 if curl -fsS -m 10 "https://$HOSTNAME_CF/healthz"; then echo; echo "Tunnel up: https://$HOSTNAME_CF (agent $LABEL, log $ALTEA_HOME/logs/cloudflared.log)"; else echo "tunnel not answering yet; see $ALTEA_HOME/logs/cloudflared.log (DNS can take a minute)"; fi
+echo "Readiness for the watchdog: http://127.0.0.1:$METRICS_PORT/ready"
 echo "Next: bash scripts/remote-install.sh --public-url https://$HOSTNAME_CF --tunnel-label $LABEL --member \"Your Name\""

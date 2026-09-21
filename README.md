@@ -67,6 +67,12 @@ bash scripts/remote-tailscale-node.sh --hostname altea      # userspace tailscal
                                                             # prints a login URL: open it to approve the node
 ```
 
+**Own a domain on Cloudflare?** A Cloudflare Tunnel is the other way to get a port-443 URL, and the one to use when
+this Mac's Tailscale name cannot carry the Funnel: `cloudflared tunnel login` once, then
+`bash scripts/remote-cloudflare-tunnel.sh --hostname altea.example.com` (tunnel + DNS record + launchd agent), and
+run the installer below with `--public-url https://altea.example.com --tunnel-label com.altea.cloudflared` and no
+`--funnel`.
+
 **On the serving Mac** (Tailscale installed and signed in, [Funnel enabled](https://tailscale.com/kb/1223/funnel#setup)):
 ```bash
 git clone https://github.com/noorabdalla04/altea-mcp.git && cd altea-mcp

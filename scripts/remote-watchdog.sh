@@ -37,12 +37,30 @@ if [ "$state" != "Running" ]; then
 fi
 fi
 
-# 3a. a tunnel agent (Cloudflare etc.) in front instead of a Funnel: keep it alive by checking the public URL from here
-if [ -n "${ALTEA_TUNNEL_LABEL:-}" ] && [ -n "$PUBLIC_URL" ]; then
-  if ! curl -fsS -m 15 -A "altea-watchdog" "$PUBLIC_URL/healthz" >/dev/null 2>&1; then
-    log "tunnel: $PUBLIC_URL/healthz failed; restarting $ALTEA_TUNNEL_LABEL"
+# 3a. a tunnel agent (Cloudflare etc.) in front instead of a Funnel. Its own readiness endpoint decides
+#     (cloudflared --metrics: /ready is 200 while at least one edge connection is up); the public URL is only a
+#     secondary signal, and a DNS failure on this Mac (curl exit 6) is never treated as a tunnel failure.
+if [ -n "${ALTEA_TUNNEL_LABEL:-}" ]; then
+  READY="http://127.0.0.1:${ALTEA_TUNNEL_METRICS_PORT:-20241}/ready"
+  down=0
+  if curl -fsS -m 5 "$READY" >/dev/null 2>&1; then :; else
+    curl -sS -m 5 -o /dev/null "$READY" 2>/dev/null; rc=$?
+    if [ "$rc" = 7 ] || [ "$rc" = 28 ]; then down=1; log "tunnel: readiness endpoint $READY not answering"; # not listening: agent dead
+    else
+      # listening but not ready → edge connections gone; give it two checks (10 min) before restarting
+      m=0; [ -f "$STATE.tunnel" ] && m="$(cat "$STATE.tunnel" 2>/dev/null || echo 0)"; m=$((m + 1)); echo "$m" > "$STATE.tunnel"
+      log "tunnel: not ready (miss $m/2)"; [ "$m" -ge 2 ] && { down=1; echo 0 > "$STATE.tunnel"; }
+    fi
+  fi
+  [ "$down" = 0 ] && echo 0 > "$STATE.tunnel"
+  if [ "$down" = 0 ] && [ -n "$PUBLIC_URL" ]; then
+    curl -fsS -m 15 -A "altea-watchdog" -o /dev/null "$PUBLIC_URL/healthz" 2>/dev/null; rc=$?
+    [ "$rc" = 0 ] || [ "$rc" = 6 ] || log "tunnel: public $PUBLIC_URL/healthz returned curl rc=$rc (tunnel itself ready; not restarting)"
+  fi
+  if [ "$down" = 1 ]; then
+    log "tunnel: restarting $ALTEA_TUNNEL_LABEL"
     launchctl kickstart -k "gui/$(id -u)/$ALTEA_TUNNEL_LABEL" 2>&1 | sed 's/^/  /'
-    sleep 20; curl -fsS -m 15 "$PUBLIC_URL/healthz" >/dev/null 2>&1 && log "tunnel: back" || log "tunnel: STILL DOWN"
+    sleep 20; curl -fsS -m 5 "$READY" >/dev/null 2>&1 && log "tunnel: ready again" || log "tunnel: STILL not ready (see cloudflared.log)"
     fixed=1
   fi
 fi
