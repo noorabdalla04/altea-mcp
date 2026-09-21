@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.1 — 2026-09-21
+- claude.ai's connector client only connects to port 443: documented, and two ways to get such a URL on a Mac
+  whose Tailscale name already serves 443: a dedicated userspace Tailscale node (`scripts/remote-tailscale-node.sh`)
+  or a Cloudflare Tunnel on your own domain (`scripts/remote-cloudflare-tunnel.sh`).
+- Staying up: `com.altea.watchdog` launchd agent (server health, Tailscale, Funnel + public DNS, or the tunnel's
+  readiness endpoint), 4-hourly session keep-alive, access log; installers no longer race launchd.
+- `altea_status` reports the sign-in cookie's expiry, not a short-lived helper cookie's.
+
 ## 0.5.0 — 2026-09-21
 - Remote transport: `bin/mcp-http.mjs` serves the same tools over Streamable HTTP (stateless, one shared client,
   one mutex) behind a single-user OAuth 2.1 server (`src/oauth.mjs`: dynamic registration with a redirect
