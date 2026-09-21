@@ -3,16 +3,21 @@
 # Installs dependencies, a launchd agent that keeps `bin/mcp-http.mjs` running, and (optionally) a Tailscale
 # Funnel so the endpoint gets a public HTTPS URL for free.
 #
-#   bash scripts/remote-install.sh --public-url https://<machine>.<tailnet>.ts.net:8443 [--funnel] \
-#        [--port 8788] [--member "Your Name"] [--window visible] [--community "Altea Toronto"]
+#   bash scripts/remote-install.sh --public-url https://<hostname>.<tailnet>.ts.net [--funnel] \
+#        [--port 8788] [--member "Your Name"] [--window visible] [--community "Altea Toronto"] \
+#        [--tailscale-socket ~/.altea/tailscale/tailscaled.sock]   # dedicated node from remote-tailscale-node.sh
+#
+# claude.ai's connector client only connects to port 443. If this Mac's own MagicDNS name already serves
+# something on 443, create a dedicated node first (scripts/remote-tailscale-node.sh) and pass its socket here.
 #
 # Afterwards: copy the signed-in session here from the Mac where you ran `altea login`
 #   node bin/altea.mjs remote push user@this-mac
 # and add <public-url>/mcp as a custom connector in claude.ai (you will be asked for the passphrase printed below).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-PORT=8788; PUBLIC_URL=""; MEMBER=""; COMMUNITY=""; FUNNEL=0; WINDOW="visible"; LABEL="com.altea.mcp-http"
+PORT=8788; PUBLIC_URL=""; MEMBER=""; COMMUNITY=""; FUNNEL=0; WINDOW="visible"; LABEL="com.altea.mcp-http"; TS_SOCKET=""
 while [ $# -gt 0 ]; do case "$1" in
+  --tailscale-socket) TS_SOCKET="$2"; shift 2;;
   --public-url) PUBLIC_URL="$2"; shift 2;;
   --port) PORT="$2"; shift 2;;
   --member) MEMBER="$2"; shift 2;;
@@ -75,6 +80,15 @@ load_agent() { # label plist
 }
 load_agent "$LABEL" "$PLIST"
 
+# which tailscale CLI the watchdog and the Funnel step use: the app's, or a dedicated userspace node's
+TS_BIN="$(command -v tailscale || true)"; [ -x "${TS_BIN:-/nonexistent}" ] || TS_BIN="/Applications/Tailscale.app/Contents/MacOS/Tailscale"
+TS_CMD="$TS_BIN"; TS_RESTART="open -a Tailscale"
+if [ -n "$TS_SOCKET" ]; then
+  BREW_TS="$( (command -v brew >/dev/null 2>&1 && echo "$(brew --prefix)/bin/tailscale") || true)"
+  [ -x "${BREW_TS:-/nonexistent}" ] || { echo "--tailscale-socket needs the Homebrew tailscale CLI (run scripts/remote-tailscale-node.sh first)"; exit 1; }
+  TS_CMD="$BREW_TS --socket=$TS_SOCKET"; TS_RESTART="launchctl kickstart -k gui/$UID_N/com.altea.tailscaled"
+fi
+
 # watchdog: every 5 minutes, restart the server / relaunch Tailscale / re-enable the Funnel if any of them dropped
 WD_LABEL="com.altea.watchdog"; WD_PLIST="$HOME/Library/LaunchAgents/$WD_LABEL.plist"
 cat > "$WD_PLIST" <<PL
@@ -89,6 +103,8 @@ cat > "$WD_PLIST" <<PL
     <key>ALTEA_HOME</key><string>$ALTEA_HOME</string>
     <key>ALTEA_PUBLIC_URL</key><string>$PUBLIC_URL</string>
     <key>ALTEA_HTTP_PORT</key><string>$PORT</string>
+    <key>ALTEA_TS_CMD</key><string>$TS_CMD</string>
+    <key>ALTEA_TS_RESTART</key><string>$TS_RESTART</string>
   </dict>
   <key>StartInterval</key><integer>300</integer>
   <key>RunAtLoad</key><true/>
@@ -97,15 +113,12 @@ cat > "$WD_PLIST" <<PL
 </dict></plist>
 PL
 load_agent "$WD_LABEL" "$WD_PLIST"
-for i in 1 2 3 4 5 6 7 8 9 10; do sleep 1; curl -fsS "http://127.0.0.1:$PORT/healthz" >/dev/null 2>&1 && break; done
-curl -fsS "http://127.0.0.1:$PORT/healthz" || { echo "server did not come up; see $ALTEA_HOME/logs/http.log"; exit 1; }
-echo
+UP=0; for i in $(seq 1 30); do sleep 1; curl -fsS "http://127.0.0.1:$PORT/healthz" >/dev/null 2>&1 && { UP=1; break; }; done
+if [ "$UP" = 1 ]; then curl -fsS "http://127.0.0.1:$PORT/healthz"; echo; else echo "WARNING: server not answering yet on 127.0.0.1:$PORT (launchd keeps retrying; see $ALTEA_HOME/logs/http.log)"; fi
 
 if [ "$FUNNEL" = 1 ]; then
-  TS="$(command -v tailscale || true)"; [ -n "$TS" ] || TS="/Applications/Tailscale.app/Contents/MacOS/Tailscale"
-  [ -x "$TS" ] || { echo "tailscale CLI not found; enable the Funnel by hand: tailscale funnel --bg --https=<port> http://127.0.0.1:$PORT"; exit 1; }
   HTTPS_PORT="$(printf '%s' "$PUBLIC_URL" | sed -E 's#^https://[^:/]+:?([0-9]*).*#\1#')"; HTTPS_PORT="${HTTPS_PORT:-443}"
-  "$TS" funnel --bg --https="$HTTPS_PORT" --set-path=/ "http://127.0.0.1:$PORT"
+  $TS_CMD funnel --bg --https="$HTTPS_PORT" --set-path=/ "http://127.0.0.1:$PORT" || echo "WARNING: could not enable the Funnel; run: $TS_CMD funnel --bg --https=$HTTPS_PORT http://127.0.0.1:$PORT"
 fi
 
 echo "Installed: launchd agents $LABEL and $WD_LABEL (logs: $ALTEA_HOME/logs/http.log, watchdog.log)"

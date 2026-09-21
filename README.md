@@ -58,14 +58,25 @@ What you get: the full tool set over Streamable HTTP at `<public-url>/mcp`, behi
 registration, PKCE) with a single passphrase you type once per client. Tokens are stored hashed under
 `~/.altea/oauth`; access tokens last 7 days and refresh silently for 180 days.
 
+**Port 443 only.** claude.ai's connector client silently ignores servers on any other port (Claude Code is
+fine with `:8443`), so the public URL must be `https://<hostname>/…` with no port. A Mac's own MagicDNS name can
+carry one Funnel per port; if its 443 is free, use it directly. If something else already serves 443 on that
+Mac, give the endpoint its own node name first:
+```bash
+bash scripts/remote-tailscale-node.sh --hostname altea      # userspace tailscaled as a launchd agent, no root;
+                                                            # prints a login URL: open it to approve the node
+```
+
 **On the serving Mac** (Tailscale installed and signed in, [Funnel enabled](https://tailscale.com/kb/1223/funnel#setup)):
 ```bash
 git clone https://github.com/noorabdalla04/altea-mcp.git && cd altea-mcp
-bash scripts/remote-install.sh --public-url https://<machine>.<tailnet>.ts.net:8443 --funnel --member "Your Name"
+bash scripts/remote-install.sh --public-url https://<hostname>.<tailnet>.ts.net --funnel --member "Your Name" \
+     [--tailscale-socket ~/.altea/tailscale/tailscaled.sock]   # only with a dedicated node
 ```
 This installs a launchd agent (`com.altea.mcp-http`, restarts on failure and at login), starts the server on
-`127.0.0.1:8788`, turns the Funnel on for that one port, and prints the **passphrase**. Bookings open a real Chrome
-window on that Mac (`ALTEA_WINDOW=visible`), which nobody is looking at anyway.
+`127.0.0.1:8788`, turns the Funnel on for port 443, and prints the **passphrase**. Bookings open a real Chrome
+window on that Mac (`ALTEA_WINDOW=visible`), which nobody is looking at anyway. Public DNS for a new Funnel name
+can take 10 minutes to appear.
 
 **On the Mac where you sign in** (the serving Mac never sees your Altea password):
 ```bash
@@ -77,15 +88,15 @@ The running server picks up a pushed session on its next request. In practice th
 the server is used (the app extends the cookie on every request), so re-logins are rare.
 
 **Connect a client** (once per client; the passphrase page appears in your browser):
-* claude.ai → Settings → Connectors → *Add custom connector* → URL `https://<machine>.<tailnet>.ts.net:8443/mcp`.
+* claude.ai → Settings → Connectors → *Add custom connector* → URL `https://<hostname>.<tailnet>.ts.net/mcp`.
   The connector then shows up in the Claude apps on your phone and in Claude Desktop automatically (connectors are
   added on the web and synced; the free plan allows one custom connector).
-* Claude Code: `claude mcp add --transport http altea https://…:8443/mcp`, then `/mcp` to sign in.
+* Claude Code: `claude mcp add --transport http altea https://<hostname>.<tailnet>.ts.net/mcp`, then `/mcp` to sign in.
 * Any other MCP client that speaks Streamable HTTP + OAuth (MCP Inspector, Cursor with an allowed redirect host).
 
 Staying up: the launchd agent restarts the server on failure and at login; a second agent (`com.altea.watchdog`,
-every 5 minutes) restarts it if `/healthz` fails, relaunches Tailscale if it stopped, and re-enables the Funnel if
-it or its public DNS record disappears. The server also refreshes the gym session every 4 hours
+every 5 minutes) restarts it if `/healthz` fails, relaunches Tailscale (the app, or the dedicated node's daemon)
+if it stopped, and re-enables the Funnel if it or its public DNS record disappears. The server also refreshes the gym session every 4 hours
 (`ALTEA_KEEPALIVE_MIN`, 0 disables), which keeps the sliding-window cookie alive indefinitely. For a Mac that must
 survive reboots unattended, turn on automatic login for that user (System Settings → Users & Groups; requires
 FileVault off) and disable key expiry for the machine in the Tailscale admin console.

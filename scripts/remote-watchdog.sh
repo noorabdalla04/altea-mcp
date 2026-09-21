@@ -4,11 +4,14 @@
 #   1. the server process (restart via launchd if /healthz fails),
 #   2. Tailscale not running / logged out (relaunch the app),
 #   3. the Funnel for our port missing, or its public DNS record gone (re-enable the Funnel; the record re-publishes).
-# Env: ALTEA_HTTP_PORT (8788), ALTEA_PUBLIC_URL, ALTEA_HOME (~/.altea). Logs to $ALTEA_HOME/logs/watchdog.log.
+# Env: ALTEA_HTTP_PORT (8788), ALTEA_PUBLIC_URL, ALTEA_HOME (~/.altea), ALTEA_TS_CMD (tailscale CLI, e.g.
+# "/opt/homebrew/bin/tailscale --socket=…" for a dedicated node), ALTEA_TS_RESTART (how to relaunch it).
+# Logs to $ALTEA_HOME/logs/watchdog.log.
 set -u
 PORT="${ALTEA_HTTP_PORT:-8788}"; PUBLIC_URL="${ALTEA_PUBLIC_URL:-}"; ALTEA_HOME="${ALTEA_HOME:-$HOME/.altea}"
 LABEL="com.altea.mcp-http"; STATE="$ALTEA_HOME/logs/watchdog.state"; mkdir -p "$ALTEA_HOME/logs"
-TS="$(command -v tailscale || true)"; [ -x "${TS:-/nonexistent}" ] || TS="/Applications/Tailscale.app/Contents/MacOS/Tailscale"
+if [ -n "${ALTEA_TS_CMD:-}" ]; then TS="$ALTEA_TS_CMD"; else TS="$(command -v tailscale || true)"; [ -x "${TS:-/nonexistent}" ] || TS="/Applications/Tailscale.app/Contents/MacOS/Tailscale"; fi
+TS_RESTART="${ALTEA_TS_RESTART:-open -a Tailscale}"
 log() { echo "$(date '+%Y-%m-%d %H:%M:%S') $*"; }
 fixed=0
 
@@ -21,13 +24,13 @@ if ! curl -fsS -m 10 "http://127.0.0.1:$PORT/healthz" >/dev/null 2>&1; then
 fi
 
 # 2. tailscale
-[ -x "$TS" ] || { log "tailscale CLI not found at $TS"; exit 0; }
-state="$("$TS" status --json 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin).get("BackendState",""))' 2>/dev/null)"
+[ -x "${TS%% *}" ] || { log "tailscale CLI not found at $TS"; exit 0; }
+state="$($TS status --json 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin).get("BackendState",""))' 2>/dev/null)"
 if [ "$state" != "Running" ]; then
-  log "tailscale: state '$state'; relaunching the app"
-  open -a Tailscale 2>/dev/null || true
+  log "tailscale: state '$state'; relaunching ($TS_RESTART)"
+  eval "$TS_RESTART" >/dev/null 2>&1 || true
   sleep 15
-  state="$("$TS" status --json 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin).get("BackendState",""))' 2>/dev/null)"
+  state="$($TS status --json 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin).get("BackendState",""))' 2>/dev/null)"
   [ "$state" = "Running" ] && log "tailscale: running" || log "tailscale: STILL '$state' (a re-login in the Tailscale app may be needed)"
   fixed=1
 fi
@@ -37,7 +40,7 @@ if [ -n "$PUBLIC_URL" ] && [ "$state" = "Running" ]; then
   host="$(printf '%s' "$PUBLIC_URL" | sed -E 's#^https?://([^:/]+).*#\1#')"
   hport="$(printf '%s' "$PUBLIC_URL" | sed -E 's#^https?://[^:/]+:?([0-9]*).*#\1#')"; hport="${hport:-443}"
   reenable=0
-  if ! "$TS" funnel status 2>/dev/null | grep -q "^https://$host:$hport (Funnel on)\|^https://$host (Funnel on)"; then
+  if ! $TS funnel status 2>/dev/null | grep -q "^https://$host:$hport (Funnel on)\|^https://$host (Funnel on)"; then
     log "funnel: not on for $host:$hport"; reenable=1
   else
     # public DNS: tolerate three consecutive misses (~15 min) before acting, since publication itself can lag
@@ -51,8 +54,8 @@ if [ -n "$PUBLIC_URL" ] && [ "$state" = "Running" ]; then
   fi
   if [ "$reenable" = 1 ]; then
     log "funnel: re-enabling https=$hport -> http://127.0.0.1:$PORT"
-    "$TS" funnel --https="$hport" --set-path=/ off >/dev/null 2>&1 || true
-    "$TS" funnel --bg --https="$hport" --set-path=/ "http://127.0.0.1:$PORT" 2>&1 | sed 's/^/  /'
+    $TS funnel --https="$hport" --set-path=/ off >/dev/null 2>&1 || true
+    $TS funnel --bg --https="$hport" --set-path=/ "http://127.0.0.1:$PORT" 2>&1 | sed 's/^/  /'
     fixed=1
   fi
 fi
