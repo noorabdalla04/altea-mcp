@@ -69,6 +69,30 @@ PL
 UID_N="$(id -u)"
 launchctl bootout "gui/$UID_N/$LABEL" 2>/dev/null || true
 launchctl bootstrap "gui/$UID_N" "$PLIST"
+
+# watchdog: every 5 minutes, restart the server / relaunch Tailscale / re-enable the Funnel if any of them dropped
+WD_LABEL="com.altea.watchdog"; WD_PLIST="$HOME/Library/LaunchAgents/$WD_LABEL.plist"
+cat > "$WD_PLIST" <<PL
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>$WD_LABEL</string>
+  <key>ProgramArguments</key><array><string>/bin/bash</string><string>$ROOT/scripts/remote-watchdog.sh</string></array>
+  <key>EnvironmentVariables</key><dict>
+    <key>PATH</key><string>$(dirname "$NODE"):/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>HOME</key><string>$HOME</string>
+    <key>ALTEA_HOME</key><string>$ALTEA_HOME</string>
+    <key>ALTEA_PUBLIC_URL</key><string>$PUBLIC_URL</string>
+    <key>ALTEA_HTTP_PORT</key><string>$PORT</string>
+  </dict>
+  <key>StartInterval</key><integer>300</integer>
+  <key>RunAtLoad</key><true/>
+  <key>StandardOutPath</key><string>$ALTEA_HOME/logs/watchdog.log</string>
+  <key>StandardErrorPath</key><string>$ALTEA_HOME/logs/watchdog.log</string>
+</dict></plist>
+PL
+launchctl bootout "gui/$UID_N/$WD_LABEL" 2>/dev/null || true
+launchctl bootstrap "gui/$UID_N" "$WD_PLIST"
 for i in 1 2 3 4 5 6 7 8 9 10; do sleep 1; curl -fsS "http://127.0.0.1:$PORT/healthz" >/dev/null 2>&1 && break; done
 curl -fsS "http://127.0.0.1:$PORT/healthz" || { echo "server did not come up; see $ALTEA_HOME/logs/http.log"; exit 1; }
 echo
@@ -80,7 +104,7 @@ if [ "$FUNNEL" = 1 ]; then
   "$TS" funnel --bg --https="$HTTPS_PORT" --set-path=/ "http://127.0.0.1:$PORT"
 fi
 
-echo "Installed: launchd agent $LABEL (logs: $ALTEA_HOME/logs/http.log)"
+echo "Installed: launchd agents $LABEL and $WD_LABEL (logs: $ALTEA_HOME/logs/http.log, watchdog.log)"
 echo "MCP endpoint: $PUBLIC_URL/mcp"
 [ -n "$PASS_OUT" ] && { echo; echo "$PASS_OUT"; }
 echo

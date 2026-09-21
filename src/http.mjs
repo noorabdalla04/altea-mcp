@@ -9,7 +9,7 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import { mcpAuthRouter, getOAuthProtectedResourceMetadataUrl } from '@modelcontextprotocol/sdk/server/auth/router.js';
 import { requireBearerAuth } from '@modelcontextprotocol/sdk/server/auth/middleware/bearerAuth.js';
 import { createAlteaServer } from './server.mjs';
-import { Mutex } from './errors.mjs';
+import { Mutex, withTimeout } from './errors.mjs';
 import { Altea } from './client.mjs';
 
 const pkg = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'package.json'), 'utf8'));
@@ -22,7 +22,7 @@ const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&
  * @param {() => object} [o.makeClient] Altea client factory (tests inject a stub); one instance is shared by all requests
  * @param {boolean} [o.trustProxy]    true when a reverse proxy (Tailscale Funnel, Cloudflare Tunnel) sits in front
  */
-export function createHttpApp({ publicUrl, provider, makeClient, log = (m) => process.stderr.write(`[altea-http] ${m}\n`), readTimeoutMs = 60_000, actionTimeoutMs = 150_000, idleMs = 10 * 60_000, trustProxy = true } = {}) {
+export function createHttpApp({ publicUrl, provider, makeClient, log = (m) => process.stderr.write(`[altea-http] ${m}\n`), readTimeoutMs = 60_000, actionTimeoutMs = 150_000, idleMs = 10 * 60_000, keepAliveMs = 0, trustProxy = true } = {}) {
   if (!publicUrl) throw new Error('publicUrl is required (ALTEA_PUBLIC_URL)');
   if (!provider) throw new Error('provider is required');
   const base = new URL(publicUrl);
@@ -36,10 +36,30 @@ export function createHttpApp({ publicUrl, provider, makeClient, log = (m) => pr
   const mutex = new Mutex();
   const idle = setInterval(async () => { if (client?.browser && Date.now() - lastUse > idleMs) { log('idle: closing chrome'); await client.close().catch(() => {}); } }, 60_000);
   idle.unref();
+  // keep-alive: the app re-issues the session cookie on every request (a sliding window), so a periodic cheap read keeps
+  // a served session signed in indefinitely; without traffic it would lapse after the cookie's lifetime.
+  const keepAlive = async () => {
+    try {
+      const c = shared(); if (c.init) await c.init();
+      const s = await withTimeout(c.status(), readTimeoutMs, 'keep-alive');
+      if (c.http?.persist) await c.http.persist();
+      log(`keep-alive: ${s.signedIn ? `signed in, session cookie expires ${s.sessionExpiresAt}` : `NOT signed in (${s.error}); push a fresh session`}`);
+      return s;
+    } catch (e) { log(`keep-alive failed: ${e?.message || e}`); return null; }
+  };
+  const alive = keepAliveMs > 0 ? setInterval(keepAlive, keepAliveMs) : null;
+  alive?.unref();
 
   const app = express();
   app.disable('x-powered-by');
   if (trustProxy) app.set('trust proxy', 1);
+  // access log (health checks excluded): enough to tell whether a client ever reached the server and how it fared
+  app.use((req, res, next) => {
+    if (req.path === '/healthz') return next();
+    const t0 = Date.now();
+    res.on('finish', () => log(`${req.method} ${req.path} → ${res.statusCode} ${Date.now() - t0}ms ip=${req.ip} ua="${(req.get('user-agent') || '').slice(0, 60)}"`));
+    next();
+  });
 
   app.get('/healthz', (req, res) => { res.setHeader('Cache-Control', 'no-store'); res.json({ ok: true, name: pkg.name, version: pkg.version, mcp: mcpUrl.href, time: new Date().toISOString() }); });
   app.get('/', (req, res) => res.type('html').send(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex"><title>Altea MCP</title><style>body{font-family:-apple-system,system-ui,sans-serif;max-width:40rem;margin:3rem auto;padding:0 1rem;line-height:1.5;color-scheme:light dark}code{background:rgba(127,127,127,.15);padding:.1em .3em;border-radius:4px}</style></head><body><h1>Altea MCP ${esc(pkg.version)}</h1><p>This is a remote MCP server for the Altea Active booking app. Its endpoint is <code>${esc(mcpUrl.href)}</code>.</p><p>Add it as a custom connector in claude.ai (Settings → Connectors → Add custom connector) or in Claude Code with <code>claude mcp add --transport http altea ${esc(mcpUrl.href)}</code>. You will be asked for the passphrase once per client.</p></body></html>`));
@@ -73,6 +93,6 @@ export function createHttpApp({ publicUrl, provider, makeClient, log = (m) => pr
   // eslint-disable-next-line no-unused-vars
   app.use((err, req, res, next) => { log(`http: ${err?.message || err}`); if (!res.headersSent) res.status(err?.status || 500).json({ error: err?.status ? err.message : 'internal error' }); });
 
-  const shutdown = async () => { clearInterval(idle); if (client) await client.close().catch(() => {}); client = null; };
-  return { app, shutdown, getClient: shared, mcpUrl: mcpUrl.href };
+  const shutdown = async () => { clearInterval(idle); if (alive) clearInterval(alive); if (client) await client.close().catch(() => {}); client = null; };
+  return { app, shutdown, getClient: shared, keepAlive, mcpUrl: mcpUrl.href };
 }

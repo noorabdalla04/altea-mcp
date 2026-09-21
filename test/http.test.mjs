@@ -155,3 +155,16 @@ test('tokens survive a server restart and the stateless endpoint needs no sessio
   assert.equal(r.headers.get('mcp-session-id'), null);
   assert.ok(provider.hasPassphrase());
 });
+
+test('keep-alive pings the shared client and reports the session expiry', async (t) => {
+  const { stub } = await start(t);
+  const dir = mkdtempSync(join(tmpdir(), 'altea-oauth-'));
+  const provider = new FileOAuthProvider({ dir, log: () => {} }); provider.setPassphrase(PASS);
+  const lines = [];
+  const { keepAlive, shutdown } = createHttpApp({ publicUrl: 'http://localhost:1', provider, makeClient: () => stub, log: (m) => lines.push(m), keepAliveMs: 60_000 });
+  t.after(shutdown);
+  const before = stub.calls;
+  const s = await keepAlive();
+  assert.equal(s.signedIn, true); assert.equal(stub.calls, before + 1);
+  assert.ok(lines.some((l) => /keep-alive: signed in, session cookie expires 2026-10-01/.test(l)), lines.join('|'));
+});

@@ -13,8 +13,9 @@ const publicUrl = process.env.ALTEA_PUBLIC_URL || `http://localhost:${port}`;
 const provider = new FileOAuthProvider({ log });
 if (!provider.hasPassphrase()) { log('no passphrase set: run `node bin/altea.mjs remote passphrase` first'); process.exit(2); }
 
-const { app, shutdown, mcpUrl } = createHttpApp({ publicUrl, provider, log, trustProxy: process.env.ALTEA_TRUST_PROXY !== '0' });
-const server = app.listen(port, host, () => log(`listening on http://${host}:${port}; MCP endpoint ${mcpUrl}`));
+const keepAliveMs = Number(process.env.ALTEA_KEEPALIVE_MIN ?? 240) * 60_000; // 0 disables
+const { app, shutdown, keepAlive, mcpUrl } = createHttpApp({ publicUrl, provider, log, keepAliveMs, trustProxy: process.env.ALTEA_TRUST_PROXY !== '0' });
+const server = app.listen(port, host, () => { log(`listening on http://${host}:${port}; MCP endpoint ${mcpUrl}`); if (keepAliveMs > 0) setTimeout(keepAlive, 5_000).unref(); });
 server.requestTimeout = 300_000; // bookings can take a while behind a slow proxy
 
 const bye = async (sig) => { log(`${sig}: shutting down`); server.close(); await shutdown(); process.exit(0); };

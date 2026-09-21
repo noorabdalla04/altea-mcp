@@ -83,6 +83,13 @@ the server is used (the app extends the cookie on every request), so re-logins a
 * Claude Code: `claude mcp add --transport http altea https://…:8443/mcp`, then `/mcp` to sign in.
 * Any other MCP client that speaks Streamable HTTP + OAuth (MCP Inspector, Cursor with an allowed redirect host).
 
+Staying up: the launchd agent restarts the server on failure and at login; a second agent (`com.altea.watchdog`,
+every 5 minutes) restarts it if `/healthz` fails, relaunches Tailscale if it stopped, and re-enables the Funnel if
+it or its public DNS record disappears. The server also refreshes the gym session every 4 hours
+(`ALTEA_KEEPALIVE_MIN`, 0 disables), which keeps the sliding-window cookie alive indefinitely. For a Mac that must
+survive reboots unattended, turn on automatic login for that user (System Settings → Users & Groups; requires
+FileVault off) and disable key expiry for the machine in the Tailscale admin console.
+
 Operations: `node bin/altea.mjs remote status <url>` (health, registered clients, live tokens),
 `remote revoke` (sign every client out), `remote passphrase --rotate`. Logs: `~/.altea/logs/http.log`.
 Only claude.ai / claude.com and loopback redirect URIs are accepted at registration; add hosts with
